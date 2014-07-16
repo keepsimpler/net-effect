@@ -8,6 +8,7 @@ library(doMC)  #
 registerDoMC()  # register Multi Cores
 getDoParWorkers()  # get available Cores
 
+extinct.threshold.default = .Machine$double.eps * 100  # threshold of species extinction is 100 times of machine precision
 
 #' @title Lotka-Volterra (LV) Equations of Holling type II by Bastolla et al.
 #' @param time, time step of simulation
@@ -29,8 +30,126 @@ model.lv2 <- function(time, init, parms, ...) {
   list(c(dN))
 }
 
-#' @title the [parms] and [init] of mutualistic lv2 model in soft mean field case
-#' @param A, the incident matrix of mutualistic networks which are bipartite
+
+#' @title the [parms] of mutualistic lv2 model
+#' @param graph, the incident matrix of mutualistic networks which are bipartite
+#' @param alpha.mu, alpha.sd, the intrinsic growth rate
+#' @param beta0.mu, beta0.sd, the intraspecies competition
+#' @param beta1.mu, beta1.sd, the interspecies competition
+#' @param gamma.mu, gamma.sd, the interspecies cooperation
+#' @param h.mu, h.sd, the Handling time, saturate coefficient
+#' @return [parms] of [simObj] class
+parms.lv2 <- function(graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.03, beta1.sd = 0.02,
+                      gamma.mu = 1, gamma.sd = 0.2, h.mu = 0.2, h.sd = 0.1) {
+  numP = dim(graph)[1]
+  numA = dim(graph)[2]
+  s = numP + numA
+  r = runif(s) * 2 * alpha.sd + (alpha.mu - alpha.sd)
+  C = matrix(runif(s * s), ncol = s, nrow = s) * 2 * beta1.sd + (beta1.mu - beta1.sd)
+  diag(C) = runif(s) * 2 * beta0.sd + (beta0.mu - beta0.sd)
+  
+  edges = sum(graph > 0)  # the number of edges
+  M = as.one.mode(graph)  # transform to adjacency matrix (function of package [bipartite])
+  M[M > 0] = runif(2 * edges) * 2 * gamma.sd + (gamma.mu - gamma.sd)  # endue values of interspecies cooperation
+  
+  h = runif(s) * 2 * h.sd + (h.mu - h.sd)
+  list(r = r, C = C, M = M, h = h)  # the [parms] of [simObj] class in package [simecol]
+}
+
+#' @title LV2 simulation function
+#' @param graph, the incidence matrix of graph.
+#' @param alpha0,
+#' @param beta0,
+#' @param gamma0,
+#' @param h0,
+#' @param isout, if output the time serials of simulation
+#' @param steps and stepwise of simulation
+sim.lv2.graph <- function(graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.03, beta1.sd = 0.02,
+                          gamma.mu = 1, gamma.sd = 0.2, h.mu = 0.2, h.sd = 0.1, Xinit = NULL, 
+                          isout = FALSE, steps = 10000, stepwise = 0.01) {
+  LV2 <- odeModel(
+    main = model.lv2, 
+    times = c(from = 0, to = steps * stepwise, by = stepwise),
+    solver = 'lsoda')
+
+  parms(LV2) = parms.lv2(graph, alpha.mu = alpha.mu, alpha.sd = alpha.sd, beta0.mu = beta0.mu, beta0.sd = beta0.sd,
+                             beta1.mu = beta1.mu, beta1.sd = beta1.sd,
+                             gamma.mu = gamma.mu, gamma.sd = gamma.sd, h.mu = h.mu, h.sd = h.sd)
+  if (is.null(Xinit)) {
+    Xinit = solve(parms(LV2)$C - parms(LV2)$M) %*% parms(LV2)$r  # the [init] Value, which is close to the steady state.    
+  }
+  if (any(Xinit < 0)) {
+    print('Initial state values is less than 0 !!')
+    #stop('Initial state values is less than 0 !!', init(LV2))
+    Xinit = r
+  }
+  init(LV2) = Xinit
+  
+  LV2 <- sim(LV2)
+  LV2.out = out(LV2)
+  
+  Nstar = as.numeric(LV2.out[nrow(LV2.out), 2:ncol(LV2.out)]) 
+  
+  Phi = jacobian.full(y = Nstar, func = model.lv2, parms = parms(LV2))
+  if (isout) {
+    ret = list(out = LV2.out, Nstar = Nstar, Phi = Phi, params = parms(LV2))
+  }
+  else {
+    ret = list(Nstar = Nstar, Phi = Phi, params = parms(LV2))
+  }
+  ret
+}
+
+## Decrease the intrinsic growth rates of pollinators
+sim.lv2.alpha.dec <- function(dec.steps = 10, dec.stepwise = 0.01, graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.03, beta1.sd = 0.02,
+                              gamma.mu = 1, gamma.sd = 0.2, h.mu = 0.2, h.sd = 0.1, Xinit = NULL, 
+                              isout = FALSE, steps = 10000, stepwise = 0.01) {
+  lv2.outs = list()
+  
+  LV2 <- odeModel(
+    main = model.lv2, 
+    times = c(from = 0, to = steps * stepwise, by = stepwise),
+    solver = 'lsoda')
+  
+  parms(LV2) = parms.lv2(graph, alpha.mu = alpha.mu, alpha.sd = alpha.sd, beta0.mu = beta0.mu, beta0.sd = beta0.sd,
+                         beta1.mu = beta1.mu, beta1.sd = beta1.sd,
+                         gamma.mu = gamma.mu, gamma.sd = gamma.sd, h.mu = h.mu, h.sd = h.sd)
+  if (is.null(Xinit)) {
+    Xinit = solve(parms(LV2)$C - parms(LV2)$M) %*% parms(LV2)$r  # the [init] Value, which is close to the steady state.    
+  }
+  if (any(Xinit < 0)) {
+    print('Initial state values is less than 0 !!')
+    #stop('Initial state values is less than 0 !!', init(LV2))
+    Xinit = r
+  }
+  
+  for ( i in 1:dec.steps) {
+    init(LV2) = Xinit
+
+    LV2 <- sim(LV2)
+    LV2.out = out(LV2)
+    
+    Nstar = as.numeric(LV2.out[nrow(LV2.out), 2:ncol(LV2.out)]) 
+    Nstar[Nstar < 10^-10] = 0  # species with biomass less than the threshold is considered to be extinct
+    
+    Phi = jacobian.full(y = Nstar, func = model.lv2, parms = parms(LV2))
+    if (isout) {
+      ret = list(out = LV2.out, Nstar = Nstar, Phi = Phi, params = parms(LV2))
+    }
+    else {
+      ret = list(Nstar = Nstar, Phi = Phi, params = parms(LV2))
+    }
+    lv2.outs[[length(lv2.outs) + 1]] = ret
+    parms(LV2)$r = parms(LV2)$r - dec.stepwise
+    Xinit = ret$Nstar
+  }
+  lv2.outs
+}
+
+
+  
+  #' @title the [parms] and [init] of mutualistic lv2 model in soft mean field case
+#' @param graph, the incident matrix of mutualistic networks which are bipartite
 #' @param alpha0, the intrinsic growth rate
 #' @param beta0, the mean value of intraspecies competition,
 #' @param gamma0, the mean value of interspecies cooperation
@@ -50,7 +169,7 @@ parms.lv2.softmean <- function(graph, alpha0 = 1, beta0 = 1, gamma0 = NULL, h0 =
   M = as.one.mode(graph)  # transform to adjacency matrix (function of package [bipartite])
   M[M > 0] = gamma0  # endue the mean value of interspecies cooperation
   h = rep(h0, numP + numA)  # endue the mean value of handling time
-  parmsV = list(r, C, M, h)  # the [parms] Value of [simObj] class in package [simecol]
+  parmsV = list(r = r, C = C, M = M, h = h)  # the [parms] Value of [simObj] class in package [simecol]
   if (is.null(Xinit)) {
     Xinit = solve(C - M) %*% r  # the [init] Value, which is close to the steady state.    
   }
@@ -62,46 +181,6 @@ parms.lv2.softmean <- function(graph, alpha0 = 1, beta0 = 1, gamma0 = NULL, h0 =
 }
 
 #' @title LV2 simulation function
-#' @param graph, the incidence matrix of graph.
-#' @param alpha0,
-#' @param beta0,
-#' @param gamma0,
-#' @param h0,
-#' @param isout, if output the time serials of simulation
-#' @param steps and stepwise of simulation
-sim.lv2.graph <- function(graph, alpha0 = 1, beta0 = 1, gamma0 = NULL, h0 = 0.01, Xinit = NULL, isout = FALSE, steps = 1000, stepwise = 0.01) {
-  LV2 <- odeModel(
-    main = model.lv2, 
-    times = c(from = 0, to = steps * stepwise, by = stepwise),
-    solver = 'lsoda')
-
-  parms.and.init = parms.lv2.softmean(graph, alpha0 = alpha0, beta0 = beta0, gamma0 = gamma0, h0 = h0, Xinit = Xinit)
-  parms(LV2) = parms.and.init[[1]]
-  init(LV2) = as.numeric(parms.and.init[[2]])
-  if (any(init(LV2) < 0)) {
-    print('Initial state values is less than 0 !!')
-    #stop('Initial state values is less than 0 !!', init(LV2))
-  }
-  
-  LV2 <- sim(LV2)
-  LV2.out = out(LV2)
-  
-  Nstar = as.numeric(LV2.out[nrow(LV2.out), 2:ncol(LV2.out)]) 
-  
-  Phi = jacobian.full(y = Nstar, func = model.lv2, parms = parms(LV2))
-  if (isout) {
-    ret = list(out = LV2.out, Nstar = Nstar, Phi = Phi)
-  }
-  else {
-    ret = list(Nstar = Nstar, Phi = Phi)
-  }
-  ret
-  #ret = as.matrix(LV2.out, ncol = length(LV2.out))
-  #out = LV2.out[2:length(LV2.out)]  
-}
-
-
-#' @title LV2 simulation function
 #' @param graphs, a list of matrices which are incidence matrices of graphs.
 #' @param alpha0,
 #' @param beta0,
@@ -109,7 +188,7 @@ sim.lv2.graph <- function(graph, alpha0 = 1, beta0 = 1, gamma0 = NULL, h0 = 0.01
 #' @param h0,
 #' @param isout, if output the time serials of simulation
 #' @param steps and stepwise of simulation
-sim.lv2 <- function(graphs, alpha0 = 1, beta0 = 1, gamma0 = NULL, h0 = 0.01, isout = FALSE, steps = 1000, stepwise = 0.01) {
+sim.lv2 <- function(graphs, alpha0 = 1, beta0 = 1, gamma0 = NULL, h0 = 0.01, isout = FALSE, steps = 10000, stepwise = 0.01) {
   LV2 <- odeModel(
     main = model.lv2, 
     times = c(from = 0, to = steps * stepwise, by = stepwise),
