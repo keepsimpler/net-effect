@@ -27,6 +27,7 @@ model.lv2 <- function(time, init, parms, ...) {
   h = parms[[4]]  # handling time
   N = init  # initial state
   dN <- N * ( r - C %*% N + (M %*% N) / (1 + h * M %*% N) )
+  #dN = dN - 0.01
   list(c(dN))
 }
 
@@ -100,7 +101,7 @@ sim.lv2.graph <- function(graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, 
   ret
 }
 
-## Decrease the intrinsic growth rates of pollinators
+## Decrease the intrinsic growth rates
 sim.lv2.alpha.dec <- function(dec.steps = 10, dec.stepwise = 0.01, graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.03, beta1.sd = 0.02,
                               gamma.mu = 1, gamma.sd = 0.2, h.mu = 0.2, h.sd = 0.1, Xinit = NULL, 
                               isout = FALSE, steps = 10000, stepwise = 0.01) {
@@ -120,7 +121,7 @@ sim.lv2.alpha.dec <- function(dec.steps = 10, dec.stepwise = 0.01, graph, alpha.
   if (any(Xinit < 0)) {
     print('Initial state values is less than 0 !!')
     #stop('Initial state values is less than 0 !!', init(LV2))
-    Xinit = r
+    Xinit = parms(LV2)$r 
   }
   
   for ( i in 1:dec.steps) {
@@ -140,14 +141,116 @@ sim.lv2.alpha.dec <- function(dec.steps = 10, dec.stepwise = 0.01, graph, alpha.
       ret = list(Nstar = Nstar, Phi = Phi, params = parms(LV2))
     }
     lv2.outs[[length(lv2.outs) + 1]] = ret
+    #parms(LV2)$r[1] = parms(LV2)$r[1] - dec.stepwise
     parms(LV2)$r = parms(LV2)$r - dec.stepwise
+    #Nstar = Nstar - 0.1
+    #if (Nstar[1] < 0) Nstar[1] = 0
+    Xinit = Nstar  # ret$Nstar
+  }
+  lv2.outs
+}
+
+
+## Decrease the intrinsic growth rates
+sim.lv2.press.dec <- function(dec.steps = 10, dec.stepwise = 0.01, graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.03, beta1.sd = 0.02,
+                              gamma.mu = 1, gamma.sd = 0.2, h.mu = 0.2, h.sd = 0.1, Xinit = NULL, 
+                              isout = FALSE, steps = 10000, stepwise = 0.01) {
+  lv2.outs = list()
+  
+  LV2 <- odeModel(
+    main = model.lv2, 
+    times = c(from = 0, to = steps * stepwise, by = stepwise),
+    solver = 'lsoda')
+  
+  parms(LV2) = parms.lv2(graph, alpha.mu = alpha.mu, alpha.sd = alpha.sd, beta0.mu = beta0.mu, beta0.sd = beta0.sd,
+                         beta1.mu = beta1.mu, beta1.sd = beta1.sd,
+                         gamma.mu = gamma.mu, gamma.sd = gamma.sd, h.mu = h.mu, h.sd = h.sd)
+  if (is.null(Xinit)) {
+    Xinit = solve(parms(LV2)$C - parms(LV2)$M) %*% parms(LV2)$r  # the [init] Value, which is close to the steady state.    
+  }
+  if (any(Xinit < 0)) {
+    print('Initial state values is less than 0 !!')
+    #stop('Initial state values is less than 0 !!', init(LV2))
+    Xinit = parms(LV2)$r 
+  }
+  
+  for ( i in 1:dec.steps) {
+    init(LV2) = Xinit
+    
+    LV2 <- sim(LV2)
+    LV2.out = out(LV2)
+    
+    Nstar = as.numeric(LV2.out[nrow(LV2.out), 2:ncol(LV2.out)]) 
+    Nstar[Nstar < 10^-10] = 0  # species with biomass less than the threshold is considered to be extinct
+    
+    Phi = jacobian.full(y = Nstar, func = model.lv2, parms = parms(LV2))
+    if (isout) {
+      ret = list(out = LV2.out, Nstar = Nstar, Phi = Phi, params = parms(LV2))
+    }
+    else {
+      ret = list(Nstar = Nstar, Phi = Phi, params = parms(LV2))
+    }
+    lv2.outs[[length(lv2.outs) + 1]] = ret
+    #parms(LV2)$r[1] = parms(LV2)$r[1] - dec.stepwise
+    #parms(LV2)$r = parms(LV2)$r - dec.stepwise
+    #Nstar = Nstar - 0.1
+    #if (Nstar[1] < 0) Nstar[1] = 0
+    Xinit = parms(LV2)$r  # ret$Nstar
+  }
+  lv2.outs
+}
+
+
+## Decrease the interspecies cooperation
+sim.lv2.gamma.dec <- function(dec.steps = 10, dec.stepwise = 0.01, graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.03, beta1.sd = 0.02,
+                              gamma.mu = 1, gamma.sd = 0.2, h.mu = 0.2, h.sd = 0.1, Xinit = NULL, 
+                              isout = FALSE, steps = 10000, stepwise = 0.01) {
+  lv2.outs = list()
+  
+  LV2 <- odeModel(
+    main = model.lv2, 
+    times = c(from = 0, to = steps * stepwise, by = stepwise),
+    solver = 'lsoda')
+  
+  parms(LV2) = parms.lv2(graph, alpha.mu = alpha.mu, alpha.sd = alpha.sd, beta0.mu = beta0.mu, beta0.sd = beta0.sd,
+                         beta1.mu = beta1.mu, beta1.sd = beta1.sd,
+                         gamma.mu = gamma.mu, gamma.sd = gamma.sd, h.mu = h.mu, h.sd = h.sd)
+  if (is.null(Xinit)) {
+    Xinit = solve(parms(LV2)$C - parms(LV2)$M) %*% parms(LV2)$r  # the [init] Value, which is close to the steady state.    
+  }
+  if (any(Xinit < 0)) {
+    print('Initial state values is less than 0 !!')
+    #stop('Initial state values is less than 0 !!', init(LV2))
+    Xinit = parms(LV2)$r 
+  }
+  
+  for ( i in 1:dec.steps) {
+    init(LV2) = Xinit
+    
+    LV2 <- sim(LV2)
+    LV2.out = out(LV2)
+    
+    Nstar = as.numeric(LV2.out[nrow(LV2.out), 2:ncol(LV2.out)]) 
+    Nstar[Nstar < 10^-10] = 0  # species with biomass less than the threshold is considered to be extinct
+    extinct = length(Nstar > 0) / length(Nstar)
+    cat(extinct)
+    
+    Phi = jacobian.full(y = Nstar, func = model.lv2, parms = parms(LV2))
+    if (isout) {
+      ret = list(out = LV2.out, Nstar = Nstar, Phi = Phi, params = parms(LV2))
+    }
+    else {
+      ret = list(Nstar = Nstar, Phi = Phi, params = parms(LV2))
+    }
+    lv2.outs[[length(lv2.outs) + 1]] = ret
+    parms(LV2)$M = parms(LV2)$M - dec.stepwise
     Xinit = ret$Nstar
   }
   lv2.outs
 }
 
 
-  
+
   #' @title the [parms] and [init] of mutualistic lv2 model in soft mean field case
 #' @param graph, the incident matrix of mutualistic networks which are bipartite
 #' @param alpha0, the intrinsic growth rate
