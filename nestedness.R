@@ -2,6 +2,28 @@ library(vegan)
 library(bipartite)
 library(igraph)
 
+#' @title a niche model food web generator according to Williamns and Martinez nature 2000
+#' copy from https://gist.github.com/emhart/1503428
+#' @param S, # of species
+#' @param C, connectivity
+niche.model <- function(S, C){
+  new.mat <- matrix(0, nrow = S, ncol = S)
+  ci <- vector()
+  niche <- runif(S, 0, 1)
+  r <- rbeta(S,1,((1/(2*C))-1)) * niche
+  for(i in 1:S){ci[i]<-runif(1,r[i]/2,niche[i])}
+  
+  #now set the smallest species niche value to have an n of 0
+  r[which(niche==min(niche))] <- .00000001
+  for(i in 1:S){
+    for(j in 1:S){
+      if(niche[j] > (ci[i]-(.5*r[i])) && niche[j]< (ci[i]+.5*r[i])){new.mat[j,i]<-1}
+    }
+  }
+  new.mat <- new.mat[,order(apply(new.mat,2,sum))]
+  return(new.mat)
+}
+
 ###############################################################################
 #' @title Generate a connected graph using package [igraph]
 #'

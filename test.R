@@ -17,12 +17,13 @@ corInvPhi = diag(1/ sqrt(diagInvPhi)) %*% invPhi %*% diag(1 /sqrt(diagInvPhi))
 corrplot(Phi, method = 'circle', is.corr = FALSE, col = col4(500) )
 corrplot(corInvPhi, method = 'circle', is.corr = FALSE, col = col2(500) )
 
+corrplot(graph1, method = 'circle', is.corr = FALSE, col = col2(500) )
 
 matplot(A[[2]]$out[,2:21], type = 'l')
 
 A = sim.lv2.alpha.dec(graph = graph1, isout = TRUE, dec.steps = 150, dec.stepwise = 0.01)
 
-A = sim.lv2.gamma.dec(graph = graph1, isout = TRUE, dec.steps = 100)
+A = sim.lv2.gamma.dec(graph = graph0, isout = TRUE, dec.steps = 100)
 
 lv2.Nstars = laply(A, function(one) {
   one$Nstar
@@ -31,7 +32,7 @@ matplot(lv2.Nstars, type = 'l', lwd = 1.5)
 text(0, lv2.Nstars[1,],1:20)
 
 lv2.invPhi = laply(A, function(one) {
-  Theta = - diag(one$Nstar) %*% one$Phi
+  Theta = - diag(one$nstar) %*% one$Phi
   lev = max(Re(eigen(Theta)$values))
   sev = min(Re(eigen(Theta)$values))
   invPhi = - solve(one$Phi)
@@ -48,7 +49,7 @@ matplot(lv2.invPhi, type = 'l', col = 1:6)
 legend("right", inset=.05, legend=c('sum', 'diagsum', 'neteffect', 'lev', 'sev', 'syn'), pch=1, col=1:6, horiz=FALSE)
 
 lv2.Nstars.neteffect = cbind(lv2.Nstars, lv2.invPhi[,'neteffect'] / 100)
-lv2.Nstars.corInvPhi = cbind(lv2.Nstars, lv2.invPhi[,'syn'] / 30)
-matplot(lv2.Nstars.corInvPhi, type = 'l')
+lv2.Nstars.corInvPhi = cbind(lv2.Nstars, lv2.invPhi[,'syn'] / 10)
+matplot(lv2.Nstars.neteffect, type = 'l')
 text(0, lv2.Nstars[1,],1:20)
 
