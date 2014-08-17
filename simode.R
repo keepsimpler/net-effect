@@ -265,11 +265,11 @@ sim.ode <- function(model, parms, init, steps = 1000, stepwise = 1, isout = FALS
 
 perturb <- function(parms, nstar, perturb.type) {
   if (perturb.type == 'lv2.growth.rate.dec') {
-    parms$r = parms$r - 0.01
+    parms$r = parms$r - 0.02 #runif(length(nstar), min =  0.01, max = 0.02)
   }
   else if (perturb.type == 'lv2.primary.extinction') {
-    nstar[3] = 0
-    #nstar[10] = 0
+    nstar[1] = 0
+    #nstar[2] = 0
   }
   else if (perturb.type == 'scheffer.nutrient.inc') {
     parms['N'] = parms['N'] + 0.1
@@ -311,6 +311,23 @@ sim.ode.old <- function(model, parms, init, steps = 10000, stepwise = 0.01, isou
   }
   ode.outs
 }
+
+
+#' @title get the sensitivity matrix
+#' @param nstar, species abundance in equilibrium
+#' @param Phi, the community matrix in equilibrium
+get.sensitivity <- function(nstar, Phi) {
+  # delete extinct species, i.e., species with abundance zero
+  extinct.species = which(nstar == 0)
+  if (length(extinct.species) > 0) {
+    nstar = nstar[- extinct.species]
+    Phi = Phi[- extinct.species, - extinct.species]    
+  }
+  sensitivity = diag(1/nstar) %*% - solve(Phi) %*% diag(nstar)  #%*% diag(1/nstar) plot(nstar, diag(sensitivity))
+  lev = max(Re(eigen(Phi)$values))
+  list(extinct.species = extinct.species, sensitivity = sensitivity, lev = lev)
+}
+
 
 
 #' @references <A primer of ecology with R. Charpter 8: Multi basins of attraction>
@@ -386,20 +403,22 @@ get.gamma0.max <- function(graph, beta0 = 1, beta1 = 0.2, delta = 0, tol = 0) {
 }
 
 #' @title get the interaction matrix, including the competition and cooperation sub-matrix
-get.interaction.matrix <- function(graph, beta0 = 1, beta1 = 0.2, gamma0, delta = 0) {
+get.interaction.matrix <- function(graph, beta0.mu = 1, beta0.sd = 0., beta1.mu = 0.2, beta1.sd = 0, gamma.mu = 0, gamma.sd = 0, delta = 0) {
   numP = dim(graph)[1]
   numA = dim(graph)[2]
   s = numP + numA
   
   C = matrix(0, nrow = s, ncol = s)
-  C[1:numP, 1:numP] = beta1
-  C[(numP+1):s, (numP+1):s] = beta1
-  diag(C) = beta0
+  C[1:numP, 1:numP] = runif(numP * numP) * 2 * beta1.sd + (beta1.mu - beta1.sd)
+  C[(numP+1):s, (numP+1):s] = runif(numA * numA) * 2 * beta1.sd + (beta1.mu - beta1.sd)
+  #diag(C) = beta0
+  diag(C) = runif(s) * 2 * beta0.sd + (beta0.mu - beta0.sd)
   
-  #edges = sum(graph > 0)  # the number of edges
+  edges = sum(graph > 0)  # the number of edges
   M = as.one.mode(graph)  # transform to adjacency matrix (function of package [bipartite])
   degrees = rowSums(M)
-  M[M > 0] = gamma0  # endue values of interspecies cooperation
+  #M[M > 0] = gamma0  # endue values of interspecies cooperation
+  M[M > 0] = runif(2 * edges) * 2 * gamma.sd + (gamma.mu - gamma.sd)  # endue values of interspecies cooperation
   M = M / degrees^delta  # trade-off of mutualistic strength    
   
   list(C = C, M = M)
@@ -442,12 +461,13 @@ get.structural.vectors <- function(C, M, numP, numA) {
 #'        below the critical mutualistic strength assure the global stability
 #' @param delta, the trade-off of mutualistic strength between plants and animals
 #' @param h, the handling time
-parms.lv2.softmean <- function(alpha = NULL, C, M, h = 0) {
+parms.lv2.softmean <- function(alpha = NULL, C, M, h.mu = 0, h.sd = 0) {
   r = alpha
+  s = length(alpha)
+  h = runif(s) * 2 * h.sd + (h.mu - h.sd)
   list(r = r, C = C, M = M, h = h)  # the [parms] of ode model
 }
 
-#' @title get the random perturbations to structural vectors
 get.alpha.perturbation <- function(AlphaL, AlphaR) {
   s = length(AlphaL)
   alpha = runif(s, min = -0.001, max = 0.001) + AlphaL
@@ -463,6 +483,7 @@ get.angle <- function(perturbed, AlphaL, AlphaR) {
   c(angle = angle, angleL = angleL, angleR = angleR)
 }
 
+#' @title get the random perturbations to structural vectors
 get.perturbed <- function(AlphaL, AlphaR, n) {
   s = length(AlphaL)  # number of species
   vars = runif(s, 0, 0.2)
@@ -471,5 +492,29 @@ get.perturbed <- function(AlphaL, AlphaR, n) {
   })
   perturbed = AlphaL * perturbed
   perturbed
+}
+
+
+#' @references <Instability of a hybrid module of antagonistic and mutualistic interactions> Kondoh
+model.kondoh <- function (time, init, parms, ...) 
+{
+  X <- init[1]
+  Y <- init[2]
+  Z <- init[3]
+  with(as.list(parms), {
+    dX <- (rx - ex * X - a * Y + u * Z / (hz + Z)) * X
+    dY <- (g * a * X + d) * Y
+    dZ <- (rz - ez * Z + v * X / (hx + X)) * Z
+    return(list(c(dX, dY, dZ)))
+  })
+}
+
+parms.kondoh <- function(rx = 0.2, rz = 0.2, ex = 1, ez = 1, u = 1, v = 1,
+                         hz = 0.5, hx = 0.5, a = 0.5, g = 0.25, d = - 0.05) {
+  c(rx = rx, rz = rz, ex = ex, ez = ez, u = u, v = v, hz = hz, hx = hx, a = a, g = g, d = d)
+}
+
+init.kondoh <- function(X = 1, Y = 1, Z = 1) {
+  c(X = X, Y = Y, Z = Z)
 }
 

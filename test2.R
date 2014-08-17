@@ -1,11 +1,14 @@
 #' @references <On the structural stability of mutualistic systems. Bascompte.>
+M_SD_001 = as.matrix(M_SD_001)
 graph = M_SD_001
 graph[graph > 0] = 1
 numP = dim(graph)[1]
 numA = dim(graph)[2]
-gamma0.max = get.gamma0.max(graph = graph, beta0 = 1, beta1 = 0.2, delta = 0., tol = 0.0)
-Theta = get.interaction.matrix(graph = graph, beta0 = 1, beta1 = 0.2, gamma0 = gamma0.max - 0.2, delta = 0.)  # 0.0402
+gamma0.max = get.gamma0.max(graph = graph, beta0 = 1, beta1 = 0.2, delta = 0.5, tol = 0.0)
+Theta = get.interaction.matrix(graph = graph, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.2, beta1.sd = 0.1, 
+                               gamma.mu = gamma0.max - 0.3, gamma.sd = 0.1, delta = 0.5)  # 0.0402
 SV = get.structural.vectors(C = Theta$C, M = Theta$M, numP = numP, numA = numA)  # Structural Vectors
+alpha = rowSums(Theta$C - Theta$M)
 n = 1000
 Alphas = get.perturbed(SV$AlphaL, SV$AlphaR, n)
 angles = adply(Alphas, .margins = 2, function(onecol) {
@@ -18,7 +21,7 @@ A = llply(1:500, function(i) {
   angle = angles[i,]
   index = angle$X1
   alpha = Alphas[, index]
-  parms = parms.lv2.softmean(alpha = alpha, C = Theta$C, M = Theta$M, h = 0.)
+  parms = parms.lv2.softmean(alpha = alpha, C = Theta$C, M = Theta$M, h.mu = 0.2, h.sd = 0.1)
   init = rep(1, numP + numA)  # c(solve(Theta$C - Theta$M) %*% alpha)  # rep(1, numP + numA)  #alpha
   out = sim.ode.one(model = model.lv2, parms = parms, init = init)
   out
@@ -28,8 +31,7 @@ c(solve(Theta$C - Theta$M) %*% alpha)
 
 
 
-M_SD_001 = as.matrix(M_SD_001)
-parms = parms.lv2(graph1)
+parms = parms.lv2(graph)
 init = init.lv2(parms)
 
 A = sim.ode.one(model = model.lv2.press, parms, init, stepwise = 0.01)
@@ -38,10 +40,10 @@ A = sim.ode.one(model.lv2, parms, init)
 C = sim.ode.extinct.one(A)
 plot(B[[1]]$nstar - A$nstar,  A$invPhi[,1])
 
-A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 120,
+A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 90,
             perturb = perturb, perturb.type = 'lv2.growth.rate.dec')
 
-A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 2, steps = 10000, stepwise = 0.01,
+A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 2, steps = 10000, stepwise = 0.1,
             perturb = perturb, perturb.type = 'lv2.primary.extinction')
 
 parms = parms.lv2.mutualism.3species()
@@ -50,13 +52,21 @@ A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.st
             perturb = perturb, perturb.type = 'lv2.primary.extinction')
 matplot(A[[100]]$out[,2:29], type = 'l')
 
+B = llply(1:110, function(i) {
+  sensitivity = get.sensitivity(A[[i]]$nstar, A[[i]]$Phi)
+  rowSums(sensitivity$sensitivity)
+  #sensitivity$lev
+})
+plot(A[[1]]$nstar - A[[2]]$nstar,  rowSums(-solve(A[[1]]$Phi) %*% diag(A[[1]]$nstar) %*% (A[[2]]$params$r - A[[1]]$params$r)))
+plot(A[[2]]$nstar / A[[1]]$nstar,  rowSums(diag(1/A[[1]]$nstar) %*% -solve(A[[1]]$Phi) %*% diag(A[[1]]$nstar) %*% (A[[2]]$params$r - A[[1]]$params$r)))
+plot((A[[2]]$nstar - A[[1]]$nstar) / A[[1]]$nstar[1], -solve(A[[1]]$Phi)[,1] / -solve(A[[1]]$Phi)[1,1])
 
 ode.nstars = laply(A, function(one) {
-  one$extinct
+  one$nstar
 })
 matplot(ode.nstars, type = 'l', lwd = 1.5)
-text(0, ode.nstars[1,],1:20)
-legend("right", c("F", "S"), lty = 1:2, bty = "n")
+text(0, ode.nstars[1,],1:length(ode.nstars[1,]))
+#legend("right", c("F", "S"), lty = 1:2, bty = "n")
 
 ode.invPhi = laply(A, function(one) {
   Phi = one$Phi
