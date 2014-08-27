@@ -57,13 +57,17 @@ init.lv1.foodweb <- function(graph) {
   init = runif(s, min = 0, max = 1)
 }
 
-
-parms.lv1 <- function(s) {
-  r = runif(s, min = 0.5, max = 1.5)
-  C = matrix(runif(s * s, min = 0.1, max = 0.2), nrow = s, ncol = s)
-  diag(C) = 1
-  list(r = r, C = C)
+#' @title random interactions 
+parms.lv1 <- function(s, k, delta) {
+  g = graph.connected(s = s, k = k, gtype = 'er')
+  A = as.matrix(get.adjacency(g))
+  A[A > 0] = rnorm(n = s * k * 2, mean = 0, sd = delta)
+  diag(A) = 1
+  N = rep(1, s)
+  r = A %*% N
+  list(r = r, C = A)
 }
+
 init.lv1 <- function(s) {
   init = rep(1, s)
 }
@@ -98,6 +102,8 @@ analysis.lv1 <- function(Theta, alpha) {
   extinct = sum(nstar <= 0)
   survived = sum(nstar > 0)
 }
+
+
 #' @title Lotka-Volterra (LV) model with functional response of Holling Type I
 model.lv1 <- function(time, init, parms) {
   r = parms[[1]]  # intrinsic growth rate
@@ -124,11 +130,10 @@ model.lv2 <- function(time, init, parms, ...) {
   h = parms[[4]]  # handling time
   N = init  # initial state
   dN <- N * ( r - C %*% N + (M %*% N) / (1 + h * M %*% N) )
-  #dN = dN - 0.01
   list(c(dN))
 }
 
-# press perturbation experiment: add continually members of species by rate of <p>
+#' @title press perturbation experiment: continually add members of species by rate of <p>
 model.lv2.press <- function(time, init, parms, ...) {
   r = parms[[1]]  # intrinsic growth rate
   C = parms[[2]]  # the competition matrix
@@ -150,7 +155,7 @@ model.lv2.press <- function(time, init, parms, ...) {
 #' @param h.mu, h.sd, the Handling time, saturate coefficient
 #' @return [parms] of [simObj] class
 parms.lv2 <- function(graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.03, beta1.sd = 0.02,
-                      gamma.mu = 1, gamma.sd = 0.2, h.mu = 0.2, h.sd = 0.1) {
+                      gamma.mu = 1, gamma.sd = 0.2, h.mu = 0.1, h.sd = 0.05, delta = 0.5) {
   numP = dim(graph)[1]
   numA = dim(graph)[2]
   s = numP + numA
@@ -163,20 +168,13 @@ parms.lv2 <- function(graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta
   
   edges = sum(graph > 0)  # the number of edges
   M = as.one.mode(graph)  # transform to adjacency matrix (function of package [bipartite])
+  degrees = rowSums(M)
   M[M > 0] = runif(2 * edges) * 2 * gamma.sd + (gamma.mu - gamma.sd)  # endue values of interspecies cooperation
+  M = M / degrees^delta  # trade-off of mutualistic strength    
   
   h = runif(s) * 2 * h.sd + (h.mu - h.sd)
   list(r = r, C = C, M = M, h = h)  # the [parms] of ode model
 }
-
-parms.lv2.mutualism.3species <- function() {
-  r = c(0.1, -0.1, -0.1)
-  C = matrix(c(1, 0, 0, 0, 1 , 0.1, 0, 0.1, 1), ncol = 3)
-  M = matrix(c(0, 2.8, 1.3, 1.3, 0, 0, 2.8, 0, 0), ncol = 3)
-  h = c(0.2, 0.2, 0.1)
-  list(r = r, C = C, M = M, h = h)  # the [parms] of ode model
-}
-
 
 init.lv2 <- function(parms) {
   init = solve(parms$C - parms$M) %*% parms$r
@@ -187,6 +185,15 @@ init.lv2 <- function(parms) {
   }
   init  
 }
+
+parms.lv2.mutualism.3species <- function() {
+  r = c(0.5, -0.1, -0.1)   # r[1] = 0.28365 ~ 0.28366
+  C = matrix(c(0.5, 0, 0, 0, 0.5, 0.1, 0, 0.1, 0.5), ncol = 3)
+  M = matrix(c(0, 0.5, 0.5, 0.5, 0, 0, 0.5, 0, 0), ncol = 3)
+  h = c(0., 0.1, 0.3)
+  list(r = r, C = C, M = M, h = h)  # the [parms] of ode model
+}
+
 
 #' @title One simulation of ODE dynamics
 sim.ode.one <- function(model, parms, init, steps = 10000, stepwise = 0.1) {
@@ -237,24 +244,33 @@ sim.ode.extinct.two <- function(before.extinct) {
 }
 
 #' @title iterately change parameters of ODE model, such as decrease intrinsic growth rate
-sim.ode <- function(model, parms, init, steps = 1000, stepwise = 1, isout = FALSE, 
+#' @param model, parms, init
+sim.ode <- function(model, parms, init, steps = 1000, stepwise = 1, isout = TRUE, 
                     iter.steps = 10, perturb, perturb.type = 'lv2.growth.rate.dec') {
   times = seq(from = 0, to = steps * stepwise, by = stepwise)
   ode.outs = list()
   for(i in 1:iter.steps) {
     print(i)
-    ode.out = ode(init, times, model, parms)
-    nstar = as.numeric(ode.out[nrow(ode.out), 2:ncol(ode.out)])
-    nstar[nstar < extinct.threshold] = 0  # species with biomass less than the threshold is considered to be extinct
+    ode.out = ode(init, times, model, parms) 
+    nstar = as.numeric(ode.out[nrow(ode.out), 2:ncol(ode.out)]) # species biomass at equilibrium
+    nstar[nstar < extinct.threshold] = 0  # species with biomass less than extinct threshold is considered to be extinct
+    extinct.species = which(nstar == 0)  # extinct species
 
-    Phi = jacobian.full(y = nstar, func = model, parms = parms)
+    Phi = jacobian.full(y = nstar, func = model, parms = parms) # community matrix, Jacobian matrix at equilibrium
     if (isout) {
-      ret = list(out = ode.out, nstar = nstar, Phi = Phi, params = parms)
+      ret = list(out = ode.out, nstar = nstar, Phi = Phi, params = parms, extinct.species = extinct.species)
     }
     else {
-      ret = list(nstar = nstar, Phi = Phi, params = parms)
+      ret = list(nstar = nstar, Phi = Phi, params = parms, extinct.species = extinct.species)
     }
     ode.outs[[length(ode.outs) + 1]] = ret
+    
+#     if (length(extinct.species) > 0) {
+#       ret = remove.species(parms, nstar, extinct.species)
+#       parms = ret$parms
+#       nstar = ret$nstar
+#     }
+#     if (length(nstar) == 0) break  # if all species are extinct, then stop and quit
     
     perturb.res = perturb(parms, nstar, perturb.type)
     parms = perturb.res$parms
@@ -263,9 +279,25 @@ sim.ode <- function(model, parms, init, steps = 1000, stepwise = 1, isout = FALS
   ode.outs
 }
 
-perturb <- function(parms, nstar, perturb.type) {
+remove.species <- function(parms, nstar, extinct.species) {
+  if (length(extinct.species) > 0) {
+    nstar = nstar[- extinct.species]
+    parms$r = parms$r[- extinct.species]
+    parms$C = parms$C[- extinct.species, - extinct.species]
+    parms$M = parms$M[- extinct.species, - extinct.species]
+    parms$h = parms$h[- extinct.species]
+  }
+  list(parms = parms, nstar = nstar)  
+}
+
+perturb <- function(parms, nstar, perturb.type, numP = NULL, numA = NULL) {
   if (perturb.type == 'lv2.growth.rate.dec') {
     parms$r = parms$r - 0.02 #runif(length(nstar), min =  0.01, max = 0.02)
+  }
+  else if(perturb.type == 'lv2.growth.rate.dec.onepart') {
+    numP = 21; numA = 7;
+    parms$r[1:numP] = parms$r[1:numP] - 0.02
+    #parms$r[(numP + 1):(numP+numA)] = parms$r[(numP + 1):(numP+numA)] - 0.02
   }
   else if (perturb.type == 'lv2.primary.extinction') {
     nstar[1] = 0
@@ -323,8 +355,17 @@ get.sensitivity <- function(nstar, Phi) {
     nstar = nstar[- extinct.species]
     Phi = Phi[- extinct.species, - extinct.species]    
   }
-  sensitivity = diag(1/nstar) %*% - solve(Phi) %*% diag(nstar)  #%*% diag(1/nstar) plot(nstar, diag(sensitivity))
-  lev = max(Re(eigen(Phi)$values))
+  sensitivity.matrix = diag(1/nstar) %*% - solve(Phi) %*% diag(nstar)  #%*% diag(1/nstar) plot(nstar, diag(sensitivity))
+  #sensitivity.matrix.diag = diag(1/diag(sensitivity.matrix))
+  #sensitivity.matrix = sensitivity.matrix %*% sensitivity.matrix.diag
+  sensitivity = rowSums(sensitivity.matrix)
+  
+  if(length(extinct.species) > 0) {
+    for(i in 1:length(extinct.species)) 
+      sensitivity = append(sensitivity, NaN, extinct.species[i] - 1)
+  }
+  
+  lev = NaN # max(Re(eigen(Phi)$values))
   list(extinct.species = extinct.species, sensitivity = sensitivity, lev = lev)
 }
 
@@ -357,12 +398,12 @@ init.scheffer <- function(F = 10, S = 10) {
 
 
 #' @references <On the structural stability of mutualistic systems. Bascompte.>
-parms.lv1 <- function(r, C) {
-  list(r = r, C = C)
-}
-A = parms.lv1(r = c(1, 1), C = matrix(c(1, 0.5, 0.5, 1), ncol = 2))  # feasible and global stable
-B = parms.lv1(r = c(1, 2), C = matrix(c(1, 0.5, 0.5, 1), ncol = 2))  # not feasible but global stable
-C = parms.lv1(r = c(1, 1), C = matrix(c(0.5, 1, 1, 0.5), ncol = 2))  # feasible but not global stable (only local stable)
+# parms.lv1 <- function(r, C) {
+#   list(r = r, C = C)
+# }
+# A = parms.lv1(r = c(1, 1), C = matrix(c(1, 0.5, 0.5, 1), ncol = 2))  # feasible and global stable
+# B = parms.lv1(r = c(1, 2), C = matrix(c(1, 0.5, 0.5, 1), ncol = 2))  # not feasible but global stable
+# C = parms.lv1(r = c(1, 1), C = matrix(c(0.5, 1, 1, 0.5), ncol = 2))  # feasible but not global stable (only local stable)
 
 #' @title get the critical mutualistic strength
 #' @param tol, tolerance

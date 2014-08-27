@@ -40,7 +40,7 @@ A = sim.ode.one(model.lv2, parms, init)
 C = sim.ode.extinct.one(A)
 plot(B[[1]]$nstar - A$nstar,  A$invPhi[,1])
 
-A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 90,
+A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 150,
             perturb = perturb, perturb.type = 'lv2.growth.rate.dec')
 
 A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 2, steps = 10000, stepwise = 0.1,
@@ -52,9 +52,9 @@ A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.st
             perturb = perturb, perturb.type = 'lv2.primary.extinction')
 matplot(A[[100]]$out[,2:29], type = 'l')
 
-B = llply(1:110, function(i) {
+B = laply(1:80, function(i) {
   sensitivity = get.sensitivity(A[[i]]$nstar, A[[i]]$Phi)
-  rowSums(sensitivity$sensitivity)
+  sensitivity$sensitivity
   #sensitivity$lev
 })
 plot(A[[1]]$nstar - A[[2]]$nstar,  rowSums(-solve(A[[1]]$Phi) %*% diag(A[[1]]$nstar) %*% (A[[2]]$params$r - A[[1]]$params$r)))
@@ -62,7 +62,7 @@ plot(A[[2]]$nstar / A[[1]]$nstar,  rowSums(diag(1/A[[1]]$nstar) %*% -solve(A[[1]
 plot((A[[2]]$nstar - A[[1]]$nstar) / A[[1]]$nstar[1], -solve(A[[1]]$Phi)[,1] / -solve(A[[1]]$Phi)[1,1])
 
 ode.nstars = laply(A, function(one) {
-  one$nstar
+  sum(one$nstar>0)
 })
 matplot(ode.nstars, type = 'l', lwd = 1.5)
 text(0, ode.nstars[1,],1:length(ode.nstars[1,]))
@@ -71,18 +71,18 @@ text(0, ode.nstars[1,],1:length(ode.nstars[1,]))
 ode.invPhi = laply(A, function(one) {
   Phi = one$Phi
   invPhi = -solve(Phi)
-  c(invPhi)
+  c(det(Phi[-1,-1]), -det(Phi[-2,-1]), det(Phi[-3,-1]))  #invPhi[,1],
 })
 
 ode.neteffects = laply(A, function(one) {
    Phi = one$Phi
    lev = max(Re(eigen(Phi)$values))
-   sev = min(Re(eigen(Phi)$values))
-   invPhi = -solve(Phi)
-  c(neteffects = sum(invPhi) - sum(diag(invPhi)), sum = sum(invPhi), diagsum = sum(diag(invPhi)) )
-  sum(c(colSums(invPhi) / diag(invPhi)))
+   #sev = min(Re(eigen(Phi)$values))
+   #invPhi = -solve(Phi)
+  #c(neteffects = sum(invPhi) - sum(diag(invPhi)), sum = sum(invPhi), diagsum = sum(diag(invPhi)) )
+  #sum(c(colSums(invPhi) / diag(invPhi)))
   #c(rowSums(invPhi))
-  #c(lev - sev)
+  c(lev)
 })
 matplot(ode.neteffects, type = 'l')
 legend("right", c("neteffect", "sum", 'diagsum'), lty = 1:4, bty = "n")
@@ -140,3 +140,68 @@ text(1,0, "abline( h = 0 )", col = "gray60", adj = c(0, -.1))
 abline(h = -1:5, v = -2:3, col = "lightgray", lty = 3)
 abline(a = 1, b = 2, col = 2)
 text(1,3, "abline( 1, 2 )", col = 2, adj = c(-.1, -.1))
+
+r1 <-3
+r2 <-2
+K1 <- 1.5
+K2 <-2
+alf12 <- 1
+alf21 <- 2
+Lotka <-function(t, N, pars)
+{
+  dN1   <- r1*N[1]*(1-(N[1]+alf12* N[2])/K1)
+  dN2   <- r2*N[2]*(1-(N[2]+alf21* N[1])/K2)
+  list(c(dN1 , dN2 ))
+}
+
+Ax   <- c(0,K2/alf21)
+Ay   <- K2 - alf21* Ax
+By   <- c(0,K1/alf12)
+Bx   <- K1 - alf12* By
+xlim <- range(c(Ax, Bx))
+ylim <- range(c(Ay, By))
+plot  (x=Ax,y=Ay, type="l", lwd=2,
+       main="Competition phase-plane",
+       # 1st isocline
+       xlab="N1",ylab="N2",xlim=xlim,ylim=ylim)
+lines (Bx,By,lwd=2,lty=2)            # 2nd isocline
+
+library(deSolve)
+trajectory <- function(N1,N2)
+{
+  times <-seq(0,30,0.1)
+  state <-c(N1 = N1, N2 = N2)
+  out   <-as.data.frame(ode(state,times, Lotka,NULL))
+  lines (out$N1,out$N2,type="l")
+  arrows(out$N1[10],out$N2[10],out$N1[11],out$N2[11],
+         length=0.1,lwd=2)
+}
+trajectory (N1=0.05,N2=0.3)
+trajectory (0.11,0.3)
+trajectory (1.5,1.8)
+trajectory (1.0,2.0)
+trajectory (0.0,0.1)
+
+# 4 equilibrium points
+X     <- c(0, 0 , K1, (K1-alf12*K2)/(1-alf12*alf21))
+Y     <- c(0, K2, 0 , (K2-alf21*K1)/(1-alf12*alf21))
+
+require(rootSolve)
+ei <- matrix(nrow=4,ncol=2)
+for (i in 1:4)
+{
+  N1 <- X[i]
+  N2 <- Y[i]
+  # the Jacobian
+  Jacob <- jacobian.full(y= c(N1,N2),func=Lotka)
+  print(Jacob)
+  # eigenvalues
+  ei[i,] <- eigen(Jacob)$values
+  # colors of symbols
+  if (sign(ei[i,1])>0 & sign(ei[i,2])>=0) col <- "white"
+  if (sign(ei[i,1])<0 & sign(ei[i,2])<=0) col <- "black"
+  if (sign(ei[i,1])* sign(ei[i,2])    <0 ) col <- "grey"
+  # equilibrium point plotting
+  points(N1,N2,pch=22,cex=2.0,bg=col,col="black")
+}
+cbind(N1=X,N2=Y,ei)
