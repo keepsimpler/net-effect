@@ -1,6 +1,115 @@
 library(vegan)
 library(bipartite)
 library(igraph)
+library(plyr)
+
+#' @title bipartite Modularity Configuration model
+biMC <- function() {}
+
+#' @references <Efficiently inferring community structure in bipartite networks>
+#' @title A bipartite degree-correlated Stochastic Block Model which can generate random bipartite networks
+#'        with different levels of modularity and degree heterogeneity
+#' n1, n2, number of nodes for two types respectively, ex. n1 = 100, n2 = 200
+#' g1, g2, list of size of modules for two types respectively, we assume the number of mudules are equal for two types.
+#' ex. g1 = c(40, 60), g2 = c(80, 120), length(g1) == length(g2)
+#' degree.mean, mean degree of the bipartite network, used to generate Block structure matrix
+#' w, the planted OMEGA in paper, ex. w = matrix()
+#' lambda, the parameter to modulate the level of modularity,
+#' degrees, list of the expected degrees of nodes
+bisbm.gen <- function(n1, n2, g1, g2, degree.mean, lambda, degrees) {
+  n = n1 + n2
+  stopifnot(n1 == sum(g1), n2 == sum(g2))  # assert
+  
+  # assign module for nodes
+  c1 = length(g1)  # number of communitys (modules) for nodes of type 1
+  c2 = length(g2) 
+  stopifnot(c1 == c2)  # assert number of modules for type 1 and type 2 equal
+  
+  members = list()  # define a member list of each module
+  cur = 0  # cursor to traverse every node iterately
+  for (i in 1:c1) {
+    members[[i]] = seq(cur + 1, cur + g1[i])
+    cur = cur + g1[i]
+  }
+  for (i in 1:c2) {
+    members[[c1 + i]] = seq(cur + 1, cur + g2[i])
+    cur = cur + g2[i]
+  }
+  
+  
+  #degree.mean = 5  # the mean degree of bipartite networks (or the connectance?)
+  # Block structure matrix, called OMEGA PLANTED in the paper.
+  omegaP = matrix(rep(0, (c1 + c2)^2), ncol = c1 + c2)
+  for (i in 1:c1) {
+      omegaP[i, c1 + i] = degree.mean * (g1[i] + g2[i])
+  }
+  omegaP = omegaP + t(omegaP)
+  
+  # Number of edges from each community, called KAPPA in the paper.
+  kappa = rowSums(omegaP)
+  # Total number of edges in network.
+  m = sum(kappa) / 2
+  
+  # Null model, or random network, called OMEGA RANDOM in the paper.
+  omegaR = matrix(rep(0, (c1 + c2)^2), ncol = c1 + c2)
+  for (i in 1:c1) {
+    for (j in (c1+1):(c1+c2)) {
+      omegaR[i, j] = kappa[i] * kappa[j] / m
+    }
+  }
+  omegaR = omegaR + t(omegaR)
+  
+  # Create the convex combination of planted/random structure, called OMEGA in the paper
+  omega = lambda * omegaP + (1 - lambda) * omegaR
+  
+  # Create edge affinities, called THETA in the paper. 
+  #degrees = ceiling(runif(n, min = 1, max = 10))  # expected degree distribution of nodes  rep(1, n)
+  stopifnot(length(degrees) == n) 
+  theta = rep(0, n)
+  for ( i in 1:(c1 + c2)) {
+    theta[members[[i]]] = degrees[members[[i]]] / sum(degrees[members[[i]]])
+  }
+  
+  # Draw Poisson numbers, i.e. choose the number of edges placed in each block or edge bundle between communities.
+  W = matrix(rep(0, (c1 + c2)^2), ncol = c1 + c2)
+  for (i in 1:c1) {
+    for (j in (c1+1):(c1+c2)) {
+      W[i, j] = rpois(1, omega[i,j])
+    }
+  }
+  #W = omega
+  
+  # Create the edges specified in W, and assign each end of each edge to a vertex in the appropriate group
+  # with propability THETA, the vector of edge affinities.
+  A = matrix(rep(0, n^2), ncol = n)  # initialize 
+  el = ldply(1:c1, function(i) {
+    ldply((c1+1):(c1+c2), function(j) {
+      to = cumsum(theta[members[[i]]])
+      dice = runif(W[i, j])
+      R = laply(1:length(dice), function(k) {
+        which(to > dice[k])[1]
+      })
+      R = members[[i]][R]
+      
+      from = cumsum(theta[members[[j]]])
+      dice = runif(W[i, j])
+      C = laply(1:length(dice), function(k) {
+        which(from > dice[k])[1]
+      })
+      C = members[[j]][C]
+      
+      cbind(R, C)
+    })
+  }) 
+  
+  el = as.matrix(el)
+  print(nrow(el))
+  A[el] = 1
+  A = A + t(A)
+  A
+}
+
+
 
 #' @title a niche model food web generator according to Williamns and Martinez nature 2000
 #' copy from https://gist.github.com/emhart/1503428
@@ -48,7 +157,7 @@ graph.connected <- function(s, k, gtype, maxtried = 100, expower = 2.5, ...) {
   count = 0
   repeat {  # generate a connected graph
     if (gtype == 'bipartite') {
-      G = bipartite.random.game(s[1], s[2], type = 'gnm', m = k * (s[1] + s[2]))
+      G = bipartite.random.game(s[1], s[2], type = 'gnm', m = ceiling(k * (s[1] + s[2])))
     } else if (gtype == 'sf') {
       G = static.power.law.game(s, k * s, exponent.out = expower)
     }
@@ -164,7 +273,7 @@ rewirelinks.richer.onestep <- function(B, connected = TRUE, ntry = 100) {
     }
     ## if the new graph is connected, [flag2] is TRUE
     G = graph.incidence(B2, add.names = NA)  
-    if (is.connected(G)) flag2 = TRUE
+    if (igraph::is.connected(G)) flag2 = TRUE
     
     ## if the rewiring is success, and (the new graph is connected or that is not required)
     if (flag1 & (flag2 | !connected)) {
@@ -214,7 +323,7 @@ swaplinks.disassort.onestep <- function(B, connected = TRUE, ntry = 100) {
     }
     ## if the new graph is connected, [flag2] is TRUE
     G = graph.incidence(B2, add.names = NA)  
-    if (is.connected(G)) flag2 = TRUE
+    if (igraph::is.connected(G)) flag2 = TRUE
     
     ## if the rewiring is success, and (the new graph is connected or that is not required)
     if (flag1 & (flag2 | !connected)) {
@@ -264,7 +373,7 @@ swaplinks.assort.onestep <- function(B, connected = TRUE, ntry = 100) {
     }
     ## if the new graph is connected, [flag2] is TRUE
     G = graph.incidence(B2, add.names = NA)  
-    if (is.connected(G)) flag2 = TRUE
+    if (igraph::is.connected(G)) flag2 = TRUE
     
     ## if the rewiring is success, and (the new graph is connected or that is not required)
     if (flag1 & (flag2 | !connected)) {

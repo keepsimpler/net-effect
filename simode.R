@@ -196,7 +196,7 @@ parms.lv2.mutualism.3species <- function() {
 
 
 #' @title One simulation of ODE dynamics
-sim.ode.one <- function(model, parms, init, steps = 10000, stepwise = 0.1) {
+sim.ode.one <- function(model, parms, init, steps = 1000, stepwise = 1) {
   times = seq(from = 0, to = steps * stepwise, by = stepwise)
   ode.out = ode(init, times, model, parms)
   nstar = as.numeric(ode.out[nrow(ode.out), 2:ncol(ode.out)])
