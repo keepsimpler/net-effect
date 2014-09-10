@@ -154,8 +154,8 @@ model.lv2.press <- function(time, init, parms, ...) {
 #' @param gamma.mu, gamma.sd, the interspecies cooperation
 #' @param h.mu, h.sd, the Handling time, saturate coefficient
 #' @return [parms] of [simObj] class
-parms.lv2 <- function(graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.03, beta1.sd = 0.02,
-                      gamma.mu = 1, gamma.sd = 0.2, h.mu = 0.1, h.sd = 0.05, delta = 0.5) {
+parms.lv2 <- function(graph, alpha.mu = 0.2, alpha.sd = 0.15, beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.0, beta1.sd = 0.0,
+                      gamma.mu = 1., gamma.sd = 0.2, h.mu = 0.1, h.sd = 0.05, delta = 0.5) {
   numP = dim(graph)[1]
   numA = dim(graph)[2]
   s = numP + numA
@@ -295,9 +295,9 @@ perturb <- function(parms, nstar, perturb.type, numP = NULL, numA = NULL) {
     parms$r = parms$r - 0.02 #runif(length(nstar), min =  0.01, max = 0.02)
   }
   else if(perturb.type == 'lv2.growth.rate.dec.onepart') {
-    numP = 21; numA = 7;
-    parms$r[1:numP] = parms$r[1:numP] - 0.02
-    #parms$r[(numP + 1):(numP+numA)] = parms$r[(numP + 1):(numP+numA)] - 0.02
+    numP = 100; numA = 100;
+    #parms$r[1:numP] = parms$r[1:numP] - 0.02
+    parms$r[(numP + 1):(numP+numA)] = parms$r[(numP + 1):(numP+numA)] - 0.04
   }
   else if (perturb.type == 'lv2.primary.extinction') {
     nstar[1] = 0

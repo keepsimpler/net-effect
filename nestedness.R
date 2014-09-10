@@ -36,7 +36,6 @@ bisbm.gen <- function(n1, n2, g1, g2, degree.mean, lambda, degrees) {
     cur = cur + g2[i]
   }
   
-  
   #degree.mean = 5  # the mean degree of bipartite networks (or the connectance?)
   # Block structure matrix, called OMEGA PLANTED in the paper.
   omegaP = matrix(rep(0, (c1 + c2)^2), ncol = c1 + c2)

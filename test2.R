@@ -40,7 +40,7 @@ A = sim.ode.one(model.lv2, parms, init)
 C = sim.ode.extinct.one(A)
 plot(B[[1]]$nstar - A$nstar,  A$invPhi[,1])
 
-A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 150,
+A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 200, steps = 100,
             perturb = perturb, perturb.type = 'lv2.growth.rate.dec')
 
 A = sim.ode(model = model.lv2, parms = parms, init = init, isout = TRUE, iter.steps = 2, steps = 10000, stepwise = 0.1,
@@ -62,9 +62,9 @@ plot(A[[2]]$nstar / A[[1]]$nstar,  rowSums(diag(1/A[[1]]$nstar) %*% -solve(A[[1]
 plot((A[[2]]$nstar - A[[1]]$nstar) / A[[1]]$nstar[1], -solve(A[[1]]$Phi)[,1] / -solve(A[[1]]$Phi)[1,1])
 
 ode.nstars = laply(A, function(one) {
-  sum(one$nstar>0)
+  one$nstar
 })
-matplot(ode.nstars, type = 'l', lwd = 1.5)
+matplot(ode.nstars, type = 'l', lwd = 1.)
 text(0, ode.nstars[1,],1:length(ode.nstars[1,]))
 #legend("right", c("F", "S"), lty = 1:2, bty = "n")
 
@@ -114,21 +114,6 @@ C = laply(1:50, function(i) {
 })
 
 
-
-## read the web-of-life files of Bascompte et al.
-weboflife = numeric()
-for (i in 1:59) {
-  networkname = paste('M_PL_', sprintf('%03d', i), sep='')
-  weboflife[i] = networkname
-  assign(networkname,
-         read.csv(paste("~/Data/Bascompte/web-of-life/M_PL_", sprintf("%03d", i), ".csv", sep=""), header=T, row.names = 1))
-}
-for (i in 1:30) {
-  networkname = paste('M_SD_', sprintf('%03d', i), sep='')
-  weboflife[59 + i] = networkname
-  assign(networkname,
-         read.csv(paste("~/Data/Bascompte/web-of-life/M_SD_", sprintf("%03d", i), ".csv", sep=""), header=T, row.names = 1))  
-}
 
 
 ## plot straight lines  <abline> 

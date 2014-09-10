@@ -1,5 +1,100 @@
 source('simode.r')
 
+#' @title check feasibility of ecological networks with different degree heterogeneity
+#' @param graphs, list of list of graphs which have different degree heterogeneity
+get.heterogeneity.and.feasible <- function(graphs) {
+  heterogeneity.and.feasible = ldply(1:length(graphs), function(i) {
+    ldply(graphs[[i]], .parallel = TRUE, function(graph) {
+      graph = graph$B
+      heterogeneity = get.degree.heterogeneity(graph)
+      feasible = 0
+      for(j in 1:20) {
+        parms = parms.lv2(graph)
+        init = init.lv2(parms)      
+        A = sim.ode.one(model = model.lv2, parms, init)
+        if (A$extinct == 0) feasible = feasible + 1
+      }
+      c(heterogeneity = heterogeneity, feasible = feasible)
+    })
+  })
+  heterogeneity.and.feasible
+}
+
+
+#' @title get robust measures (tolerance and fragility) for ecological networks with different degree heterogeneity
+#' @param graphs, list of list of graphs which have different degree heterogeneity
+get.heterogeneity.and.robust <- function(graphs) {
+  
+  heterogeneity.and.tolerances = ldply(1:length(graphs), function(i) {
+    ldply(graphs[[i]], .parallel = TRUE, function(graph) {
+      graph = graph$B
+      heterogeneity = get.degree.heterogeneity(graph)
+      feasible = 0
+      ldply(1:20, .parallel = FALSE, function(k) {
+        ret = NULL
+        parms = parms.lv2(graph)
+        init = init.lv2(parms)      
+        A = sim.ode.one(model = model.lv2, parms, init)
+        if (A$extinct == 0) {
+          B = sim.ode(model = model.lv2, parms = parms, init = init, isout = FALSE, iter.steps = 100,
+                      perturb = perturb, perturb.type = 'lv2.growth.rate.dec')        
+          nstar.init = sum(B[[1]]$nstar)
+          tolerances.and.fragility = get.tolerance(B)
+          tolerances = tolerances.and.fragility$tolerance.species
+          fragility = tolerances.and.fragility$fragility
+          tolerance.total = sum(tolerances)
+          ret = c(heterogeneity, tolerances, tolerance.total, nstar.init, fragility)
+        }
+        ret
+      })
+    })
+  })
+  heterogeneity.and.tolerances
+} 
+
+
+#' @title get the tolerance and trend of species and total communities under intrinsic growh rate delining
+#' @param A, the list of ODE output
+get.tolerance <- function(A) {
+  for( i in 1:length(A)) {  # replace NA with 0
+    A[[i]]$nstar[is.na(A[[i]]$nstar)] = 0
+  }
+  steps = length(A)
+  if (sum(A[[steps]]$nstar > 0) > 0) {
+    warning('Some species still exist.')
+  }
+  if (sum(A[[1]]$nstar == 0) > 0) {
+    warning('System is not at feasible equilibrium at beginning.')
+  }
+  n = length(A[[1]]$nstar)  # number of species at beginning
+  tolerance.species = rep(0, n)  # initialize
+  fragility = 0
+  nstar.pre = A[[1]]$nstar  # species abundance of previous step
+  nstar.pre.num = sum(nstar.pre > 0)  # species number of previous step
+  for (i in 2:steps) {
+    nstar = A[[i]]$nstar  # species abundance of this step
+    nstar.num = sum(nstar > 0)  # species number of this step
+    # get trend of species loss
+    species.loss = nstar.pre.num - nstar.num
+    if (species.loss > 0) {
+      fragility = fragility + species.loss * log(species.loss)      
+    }
+    # chose the species extincted in this step but still exist in previous step, i.e., the tolerance of species
+    species.extinct = which(nstar.pre - nstar == nstar.pre & nstar.pre >0)
+    if (length(species.extinct) > 0) {  #
+      tolerance.species[species.extinct] = i
+    }
+    if (sum(nstar > 0) == 0) {
+      break
+    }
+    else {
+      nstar.pre = nstar
+      nstar.pre.num = nstar.num
+    }
+  }
+  list(tolerance.species = tolerance.species, fragility = fragility)
+}
+
 #' @title determine if a ODE system is feasible
 is.feasible.lv2 <- function(graph, ...) {
   parms = parms.lv2(graph)
@@ -10,6 +105,7 @@ is.feasible.lv2 <- function(graph, ...) {
   else return(FALSE)
 }
 
+#' @title get degree heterogeneity, <k2>/(<k>^2)
 get.degree.heterogeneity <- function(graph) {
   graph[graph != 0] = 1
   degrees = c(rowSums(graph), colSums(graph))
@@ -17,6 +113,16 @@ get.degree.heterogeneity <- function(graph) {
   heterogeneity
 }
 
+#' @title generate random modular bipartite graph with different levels of degree heterogeneity
+#' @param n1, n2, number of nodes in ROW and COL parts respectively
+#' @param modules.row, the members of modules for ROW part
+#' @param modules.col, the members of modules for COL part
+#' @param degrees.row, node degrees for ROW part
+#' @param degrees.col, node degrees for COL part
+#' @param Q, expected modularity
+gen.modularity <- function(n1, n2, modules.row, modules.col, degrees.row, degrees.col, Q) {
+  
+}
 #' @title measure the modularity of a bipartite network
 #' @param graph, the incidence matrix of a bipartite network
 #' @param modules.row, the members of modules for ROW part
@@ -28,18 +134,18 @@ get.modularity <- function(graph, modules.row, modules.col) {
   degrees.col = colSums(graph)  # degrees of node for COL part
   modularity = 0
   for (i in 1:length(modules.row)) {
-    m1 = modules.row[[i]]$id  # member list of module for ROW part
-    m2 = modules.col[[i]]$id  # member list of module for COL part
+    m1 = modules.row[[i]]$id  # member list of corresponding module for ROW part
+    m2 = modules.col[[i]]$id  # member list of corresponding module for COL part
     module = graph[m1, m2 - nrow(graph)]  # the subgraph of the module
     Lm = sum(module)  # the number of link within module
     expected = sum(degrees.row[m1]) * sum(degrees.col[m2 - nrow(graph)])
     modularity = modularity + Lm / L - expected / L^2
-    cat( Lm / L, expected / L^2)
+    print(paste(Lm / L, expected / L^2))
   }
   modularity
 }
 
-#' @title detect the modules of empirical networks
+#' @title detect the modules of empirical bipartite networks
 #' @param graph, the incidence matrix of a bipartite network
 #' @param num.row, number of modules for ROW part
 #' @param num.col, number of modules for COL part
@@ -51,7 +157,7 @@ get.modules <- function(graph, num.row, num.col, iter = 100) {
   types = data.frame(types)
   modules = biSBM(data = edges, nodeType = types, ka = num.row, kb = num.col, deg.corr = 1, iter = iter)
   modules = data.frame(id = 1:length(modules), modules)
-  members = split(modules, f = modules$modules)
+  members = split(modules, f = modules$modules)  # {1, 2, 3, 2, 3} --> {{1, {1}}, {2,{2, 4}}, {3,{3, 5}}}
   members.row = members[1:num.row]
   members.col = members[(num.row+1):(num.row+num.col)]
   list(members.row, members.col)

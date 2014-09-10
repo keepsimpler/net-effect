@@ -1,30 +1,31 @@
-
 library(igraph)
 
-graph = M_SD_001
+graph = as.matrix(M_SD_003)  # get the empirical network
 graph[graph > 0] = 1  # remove the possible weights of links
 row.num = nrow(graph)
 col.num = ncol(graph)
 degree.mean = sum(graph) / (row.num + col.num)
+
+# generate list of list of graphs which have different degree heterogeneity 
+# but same node number and mean degree with the empirical network
 graphs = llply(1:5, .parallel = TRUE, function(i) graphs.rewiring(row.num, col.num, degree.mean))
 
-heterogeneity.and.robust = llply(1:5, function(i) {
-  llply(graphs[[i]], .parallel = TRUE, function(graph){
-    graph = graph$B
-    #heterogeneity = get.degree.heterogeneity(graph)
-    llply(1:10, function(i) {
+
+heterogeneity.and.tolerances = ldply(1:5, function(i) {
+  ldply(1:length(graphs[[i]]), function(j) {
+    graph = graphs[[i]][[j]]$B
+    heterogeneity = get.degree.heterogeneity(graph)
+    ldply(1:10, function(k) {
       ret = NULL
-      parms = parms.lv2(graph)
-      init = init.lv2(parms)      
-      A = sim.ode.one(model = model.lv2, parms, init)
-      if (A$extinct == 0) {
-        A = sim.ode(model = model.lv2, parms = parms, init = init, isout = FALSE, iter.steps = 100,
-                perturb = perturb, perturb.type = 'lv2.growth.rate.dec')
-        ret = list(graph = graph, A = A)
+      if (length(heterogeneity.and.robust[[i]][[j]][[k]]) > 0) {
+        nstar.init = sum(heterogeneity.and.robust[[i]][[j]][[k]][[2]][[1]]$nstar)
+        tolerances.and.fragility = get.tolerance(heterogeneity.and.robust[[i]][[j]][[k]][[2]])
+        tolerances = tolerances.and.fragility$tolerance.species
+        fragility = tolerances.and.fragility$fragility
+        tolerance.total = sum(tolerances)
+        ret = c(heterogeneity, tolerances, tolerance.total, nstar.init, fragility)
       }
       ret
-      #c(heterogeneity = heterogeneity, feasible = feasible)
     })
   })
 })
-
