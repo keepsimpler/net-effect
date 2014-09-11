@@ -9,7 +9,7 @@ degree.mean = sum(graph) / (row.num + col.num)
 # generate list of list of graphs which have different degree heterogeneity 
 # but same node number and mean degree with the empirical network
 graphs = llply(1:5, .parallel = TRUE, function(i) graphs.rewiring(row.num, col.num, degree.mean))
-
+graphs.assort = llply(1:5, .parallel = TRUE, function(i) graphs.rewiring.swapping(row.num, col.num, degree.mean))
 
 heterogeneity.and.tolerances = ldply(1:5, function(i) {
   ldply(1:length(graphs[[i]]), function(j) {

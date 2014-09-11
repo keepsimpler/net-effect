@@ -72,6 +72,7 @@ init.lv1 <- function(s) {
   init = rep(1, s)
 }
 
+
 #' @references <Global stability in many-species systems. Goh.>
 parms.lv1.goh.2species.predatorprey <- function() {
   r = c(-11, 5.6)

@@ -23,14 +23,14 @@ get.heterogeneity.and.feasible <- function(graphs) {
 
 #' @title get robust measures (tolerance and fragility) for ecological networks with different degree heterogeneity
 #' @param graphs, list of list of graphs which have different degree heterogeneity
-get.heterogeneity.and.robust <- function(graphs) {
-  
+#' @param rep, repeat times for each graph
+get.heterogeneity.and.robust <- function(graphs, rep = 10) {
   heterogeneity.and.tolerances = ldply(1:length(graphs), function(i) {
     ldply(graphs[[i]], .parallel = TRUE, function(graph) {
       graph = graph$B
       heterogeneity = get.degree.heterogeneity(graph)
       feasible = 0
-      ldply(1:20, .parallel = FALSE, function(k) {
+      ldply(1:rep, .parallel = FALSE, function(k) {
         ret = NULL
         parms = parms.lv2(graph)
         init = init.lv2(parms)      
@@ -41,9 +41,13 @@ get.heterogeneity.and.robust <- function(graphs) {
           nstar.init = sum(B[[1]]$nstar)
           tolerances.and.fragility = get.tolerance(B)
           tolerances = tolerances.and.fragility$tolerance.species
+          tolerance.abundance = tolerances.and.fragility$tolerance.abundance
           fragility = tolerances.and.fragility$fragility
           tolerance.total = sum(tolerances)
-          ret = c(heterogeneity, tolerances, tolerance.total, nstar.init, fragility)
+          tolerance.abundance.total = sum(tolerance.abundance)
+          ret = c(heterogeneity = heterogeneity, tolerances = tolerances, tolerance.total = tolerance.total, 
+                  tolerance.abundance = tolerance.abundance, tolerance.abundance.total = tolerance.abundance.total, 
+                  nstar.init = nstar.init, fragility = fragility)
         }
         ret
       })
@@ -71,9 +75,12 @@ get.tolerance <- function(A) {
   fragility = 0
   nstar.pre = A[[1]]$nstar  # species abundance of previous step
   nstar.pre.num = sum(nstar.pre > 0)  # species number of previous step
+  tolerance.abundance = nstar.pre # 
   for (i in 2:steps) {
     nstar = A[[i]]$nstar  # species abundance of this step
     nstar.num = sum(nstar > 0)  # species number of this step
+    # get the summed abundance accross steps
+    tolerance.abundance = tolerance.abundance + nstar
     # get trend of species loss
     species.loss = nstar.pre.num - nstar.num
     if (species.loss > 0) {
@@ -92,7 +99,7 @@ get.tolerance <- function(A) {
       nstar.pre.num = nstar.num
     }
   }
-  list(tolerance.species = tolerance.species, fragility = fragility)
+  list(tolerance.species = tolerance.species, fragility = fragility, tolerance.abundance = tolerance.abundance)
 }
 
 #' @title determine if a ODE system is feasible
