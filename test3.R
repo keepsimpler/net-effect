@@ -11,21 +11,8 @@ degree.mean = sum(graph) / (row.num + col.num)
 graphs = llply(1:5, .parallel = TRUE, function(i) graphs.rewiring(row.num, col.num, degree.mean))
 graphs.assort = llply(1:5, .parallel = TRUE, function(i) graphs.rewiring.swapping(row.num, col.num, degree.mean))
 
-heterogeneity.and.tolerances = ldply(1:5, function(i) {
-  ldply(1:length(graphs[[i]]), function(j) {
-    graph = graphs[[i]][[j]]$B
-    heterogeneity = get.degree.heterogeneity(graph)
-    ldply(1:10, function(k) {
-      ret = NULL
-      if (length(heterogeneity.and.robust[[i]][[j]][[k]]) > 0) {
-        nstar.init = sum(heterogeneity.and.robust[[i]][[j]][[k]][[2]][[1]]$nstar)
-        tolerances.and.fragility = get.tolerance(heterogeneity.and.robust[[i]][[j]][[k]][[2]])
-        tolerances = tolerances.and.fragility$tolerance.species
-        fragility = tolerances.and.fragility$fragility
-        tolerance.total = sum(tolerances)
-        ret = c(heterogeneity, tolerances, tolerance.total, nstar.init, fragility)
-      }
-      ret
-    })
-  })
-})
+gamma0.max = get.gamma0.max(graph = graph, beta0 = 1, beta1 = 0.1, delta = 0, tol = 0)
+parms = parms.lv2(graph = graph, alpha.row.mu = 1, alpha.row.sd = 0, alpha.col.mu = 1, alpha.col.sd = 0, beta0.mu = 1, beta0.sd = 0,
+                  beta1.mu = 0.1, beta1.sd = 0, gamma.mu = gamma0.max - 0.1, gamma.sd = 0, h.mu = 0, h.sd = 0, delta = 0)
+init = init.lv2(parms)
+A = sim.ode.one(model = model.lv2, parms = parms, init = init)

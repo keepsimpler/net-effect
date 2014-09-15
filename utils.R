@@ -1,23 +1,62 @@
 source('simode.r')
 
+#' @title get different structural measures of bipartite networks
+#' @param graphs, list of list of graphs which have different structures such as degree heterogeneity
+get.structure.measures <- function(graphs) {
+  measures = ldply(1:length(graphs), function(i) {
+    ldply(graphs[[i]], .parallel = TRUE, function(graph) {
+      graph = graph$B
+      heterogeneity = get.degree.heterogeneity(graph)
+      assortativity = get.assortativity(graph)
+      c(heterogeneity = heterogeneity, assortativity = assortativity)
+    })
+  })
+  measures  
+}
+
 #' @title check feasibility of ecological networks with different degree heterogeneity
 #' @param graphs, list of list of graphs which have different degree heterogeneity
-get.heterogeneity.and.feasible <- function(graphs) {
+#' @param rep, repeat times for each graph
+get.heterogeneity.and.feasible <- function(graphs, rep = 10) {
   heterogeneity.and.feasible = ldply(1:length(graphs), function(i) {
     ldply(graphs[[i]], .parallel = TRUE, function(graph) {
       graph = graph$B
       heterogeneity = get.degree.heterogeneity(graph)
+      assortativity = get.assortativity(graph)
       feasible = 0
-      for(j in 1:20) {
+      for(j in 1:rep) {
         parms = parms.lv2(graph)
         init = init.lv2(parms)      
         A = sim.ode.one(model = model.lv2, parms, init)
         if (A$extinct == 0) feasible = feasible + 1
       }
-      c(heterogeneity = heterogeneity, feasible = feasible)
+      c(heterogeneity = heterogeneity, assortativity = assortativity, feasible = feasible)
     })
   })
   heterogeneity.and.feasible
+}
+
+get.graphs.out <- function(graphs, rep = 10) {
+  graphs.out = llply(1:length(graphs), function(i) {
+    llply(graphs[[i]], .parallel = TRUE, function(graph) {
+      graph = graph$B
+      #heterogeneity = get.degree.heterogeneity(graph)
+      #assortativity = get.assortativity(graph)
+      llply(1:rep, .parallel = FALSE, function(k) {
+        ret = NULL
+        parms = parms.lv2(graph)
+        init = init.lv2(parms)      
+        A = sim.ode.one(model = model.lv2, parms, init)
+        if (A$extinct == 0) {
+          A = sim.ode(model = model.lv2, parms = parms, init = init, isout = FALSE, iter.steps = 100,
+                      perturb = perturb, perturb.type = 'lv2.growth.rate.dec')
+          ret = list(graph = graph, A = A)
+        }
+        ret
+      })
+    })
+  })
+  graphs.out
 }
 
 
@@ -29,7 +68,7 @@ get.heterogeneity.and.robust <- function(graphs, rep = 10) {
     ldply(graphs[[i]], .parallel = TRUE, function(graph) {
       graph = graph$B
       heterogeneity = get.degree.heterogeneity(graph)
-      feasible = 0
+      assortativity = get.assortativity(graph)
       ldply(1:rep, .parallel = FALSE, function(k) {
         ret = NULL
         parms = parms.lv2(graph)
@@ -45,7 +84,7 @@ get.heterogeneity.and.robust <- function(graphs, rep = 10) {
           fragility = tolerances.and.fragility$fragility
           tolerance.total = sum(tolerances)
           tolerance.abundance.total = sum(tolerance.abundance)
-          ret = c(heterogeneity = heterogeneity, tolerances = tolerances, tolerance.total = tolerance.total, 
+          ret = c(heterogeneity = heterogeneity, assortativity = assortativity, tolerances = tolerances, tolerance.total = tolerance.total, 
                   tolerance.abundance = tolerance.abundance, tolerance.abundance.total = tolerance.abundance.total, 
                   nstar.init = nstar.init, fragility = fragility)
         }
@@ -112,7 +151,17 @@ is.feasible.lv2 <- function(graph, ...) {
   else return(FALSE)
 }
 
-#' @title get degree heterogeneity, <k2>/(<k>^2)
+#' @title get assortativity (degree-degree corelation), <number of neighbors of neighbors k_2> / <k^2>
+#' @param graph, the incidence matrix of bipartite network
+get.assortativity <- function(graph) {
+  graph[graph != 0] = 1
+  degrees2 = c(rowSums(graph %*% t(graph)), rowSums(t(graph) %*% graph)) # two-hop degrees (degrees of neighbors of node)
+  degrees = c(rowSums(graph), colSums(graph))
+  assortativity = sum( degrees2 / degrees^2 )
+  assortativity
+}
+
+#' @title get degree heterogeneity, <k^2>/(<k>^2)
 get.degree.heterogeneity <- function(graph) {
   graph[graph != 0] = 1
   degrees = c(rowSums(graph), colSums(graph))
