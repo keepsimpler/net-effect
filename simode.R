@@ -45,8 +45,8 @@ model.lv2 <- function(time, init, parms, ...) {
 #' @param delta, trade-off between pairwise mutualistic interaction strengths
 #' @return a list of parameters
 parms.lv2 <- function(graph, alpha.row.mu = 0.2, alpha.row.sd = 0.15, alpha.col.mu = 0.2, alpha.col.sd = 0.15, 
-                      beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0.0, beta1.sd = 0.0,
-                      gamma.mu = 1., gamma.sd = 0.2, h.mu = 0.1, h.sd = 0.05, delta = 0.5) {
+                      beta0.mu = 1, beta0.sd = 0.2, beta1.mu = 0., beta1.sd = 0.0,
+                      gamma.mu = 1., gamma.sd = 0.2, h.mu = 0.1, h.sd = 0.05, delta = 1) {
   numP = dim(graph)[1]
   numA = dim(graph)[2]
   s = numP + numA
@@ -64,7 +64,9 @@ parms.lv2 <- function(graph, alpha.row.mu = 0.2, alpha.row.sd = 0.15, alpha.col.
   M = M / degrees^delta  # trade-off of mutualistic strength    
   
   h = runif(s) * 2 * h.sd + (h.mu - h.sd)
-  list(r = r, C = C, M = M, h = h)  # the [parms] of ode model
+  N = rep(1, s)
+  r2 = C %*% N - (M %*% N) / (1 + h * M %*% N)
+  list(r = r, C = C, M = M, h = h, r2 = r2)  # the [parms] of ode model
 }
 
 init.lv2 <- function(parms) {
@@ -140,12 +142,12 @@ remove.species <- function(parms, nstar, extinct.species) {
 
 perturb <- function(parms, nstar, perturb.type, numP = NULL, numA = NULL) {
   if (perturb.type == 'lv2.growth.rate.dec') {
-    parms$r = parms$r - 0.02 #runif(length(nstar), min =  0.01, max = 0.02)
+    parms$r = parms$r - 0.02  #runif(length(nstar), min =  0.01, max = 0.02)
   }
   else if(perturb.type == 'lv2.growth.rate.dec.onepart') {
-    numP = 100; numA = 100;
+    numP = 16; numA = 25;
     #parms$r[1:numP] = parms$r[1:numP] - 0.02
-    parms$r[(numP + 1):(numP+numA)] = parms$r[(numP + 1):(numP+numA)] - 0.04
+    parms$r[(numP + 1):(numP+numA)] = parms$r[(numP + 1):(numP+numA)] - 0.02
   }
   else if (perturb.type == 'lv2.primary.extinction') {
     nstar[1] = 0
@@ -182,5 +184,38 @@ get.sensitivity <- function(nstar, Phi) {
   lev = NaN # max(Re(eigen(Phi)$values))
   list(extinct.species = extinct.species, sensitivity = sensitivity, lev = lev)
 }
+
+#' @title Lotka-Volterra (LV) model with functional response of Holling Type I
+model.lv1 <- function(time, init, parms) {
+  r = parms[[1]]  # intrinsic growth rate
+  C = parms[[2]]  # the competition matrix
+  N = init  # initial state
+  dN <- N * ( r - C %*% N )
+  list(c(dN))
+}
+
+#' @title parameters for random interactions 
+#' @param s, number of nodes
+#' @param k, node degree, connectance = k / s
+#' @param delta, reflect interaction strengths
+parms.lv1.rand <- function(s, k, delta) {
+  g = graph.connected(s = s, k = k, gtype = 'sf')
+  A = as.matrix(get.adjacency(g))
+  A[A > 0] = rnorm(n = s * k * 2, mean = 0, sd = delta)
+  diag(A) = 1
+  N = rep(1, s)
+  r = A %*% N
+  list(r = r, C = A)
+}
+
+init.lv1 <- function(parms) {
+  init = solve(parms$C) %*% parms$r
+  if (any(init < 0)) {
+    print('Initial state values is less than 0 !!')
+    init = parms$r
+  }
+  init  
+}
+
 
 

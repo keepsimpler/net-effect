@@ -59,6 +59,22 @@ get.graphs.out <- function(graphs, rep = 10) {
   graphs.out
 }
 
+get.from.graphs.out <- function(graphs.out) {
+  ldply(graphs.out, function(graphs.out.2) {
+    ldply(graphs.out.2, function(graphs.out.3) {
+      ldply(graphs.out.3, function(graph.out) {
+        if (!is.null(graph.out)) {
+          graph = graph.out$graph
+          A = graph.out$A
+          degrees = c(rowSums(graph), colSums(graph))
+          tolerances.and.fragility = get.tolerance(A)
+          tolerances = tolerances.and.fragility$tolerance.species
+          c(degrees = degrees, tolerances = tolerances)                  
+        }
+      })
+    })
+  })
+}
 
 #' @title get robust measures (tolerance and fragility) for ecological networks with different degree heterogeneity
 #' @param graphs, list of list of graphs which have different degree heterogeneity
@@ -75,7 +91,7 @@ get.heterogeneity.and.robust <- function(graphs, rep = 10) {
         init = init.lv2(parms)      
         A = sim.ode.one(model = model.lv2, parms, init)
         if (A$extinct == 0) {
-          B = sim.ode(model = model.lv2, parms = parms, init = init, isout = FALSE, iter.steps = 100,
+          B = sim.ode(model = model.lv2, parms = parms, init = init, isout = FALSE, iter.steps = 100, steps = 200,
                       perturb = perturb, perturb.type = 'lv2.growth.rate.dec')        
           nstar.init = sum(B[[1]]$nstar)
           tolerances.and.fragility = get.tolerance(B)

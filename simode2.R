@@ -45,19 +45,6 @@ init.lv1.foodweb <- function(graph) {
   init = runif(s, min = 0, max = 1)
 }
 
-#' @title random interactions 
-#' @param s, number of nodes
-#' @param k, node degree, connectance = k / s
-#' @param delta, reflect interaction strengths
-parms.lv1 <- function(s, k, delta) {
-  g = graph.connected(s = s, k = k, gtype = 'er')
-  A = as.matrix(get.adjacency(g))
-  A[A > 0] = rnorm(n = s * k * 2, mean = 0, sd = delta)
-  diag(A) = 1
-  N = rep(1, s)
-  r = A %*% N
-  list(r = r, C = A)
-}
 
 init.lv1 <- function(s) {
   init = rep(1, s)
@@ -95,15 +82,6 @@ analysis.lv1 <- function(Theta, alpha) {
   survived = sum(nstar > 0)
 }
 
-
-#' @title Lotka-Volterra (LV) model with functional response of Holling Type I
-model.lv1 <- function(time, init, parms) {
-  r = parms[[1]]  # intrinsic growth rate
-  C = parms[[2]]  # the competition matrix
-  N = init  # initial state
-  dN <- N * ( r - C %*% N )
-  list(c(dN))
-}
 
 
 #' @title press perturbation experiment: continually add members of species by rate of <p>
