@@ -166,6 +166,9 @@ graph.connected <- function(s, k, gtype, maxtried = 100, expower = 2.5, ...) {
     else if (gtype == 'regular') {
       G = k.regular.game(s, k)
     }
+    else if (gtype == 'complete') {
+      G = graph.full(s)
+    }
     if (igraph::is.connected(G)) break  # until a connected graph is generated
     count = count + 1
     if (count == maxtried) {

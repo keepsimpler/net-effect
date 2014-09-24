@@ -142,7 +142,7 @@ remove.species <- function(parms, nstar, extinct.species) {
 
 perturb <- function(parms, nstar, perturb.type, numP = NULL, numA = NULL) {
   if (perturb.type == 'lv2.growth.rate.dec') {
-    parms$r = parms$r - 0.02  #runif(length(nstar), min =  0.01, max = 0.02)
+    parms$r = parms$r - 0.01  #runif(length(nstar), min =  0.01, max = 0.02)
   }
   else if(perturb.type == 'lv2.growth.rate.dec.onepart') {
     numP = 16; numA = 25;

@@ -259,10 +259,10 @@ get.gamma0.max <- function(graph, beta0 = 1, beta1 = 0.2, delta = 0, tol = 0) {
     if (min(Re(eigen(Theta)$values)) > tol) {
       #print('increase one stepwise.')
       initCorrect = TRUE
-      gamma0 = gamma0 + 0.0001
+      gamma0 = gamma0 + 0.001
     }
     else {
-      gamma0 = gamma0 - 0.0001
+      gamma0 = gamma0 - 0.001
       M[M > 0] = gamma0  # endue values of interspecies cooperation
       M = M / degrees^delta  # trade-off of mutualistic strength    
       break

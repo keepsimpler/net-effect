@@ -1,11 +1,11 @@
 #' @references <On the structural stability of mutualistic systems. Bascompte.>
-M_SD_001 = as.matrix(M_SD_001)
-graph = M_SD_001
+M_SD_003 = as.matrix(M_SD_003)
+graph = M_SD_003
 graph[graph > 0] = 1
 numP = dim(graph)[1]
 numA = dim(graph)[2]
-gamma0.max = get.gamma0.max(graph = graph.maxnest, beta0 = 1, beta1 = 0., delta = 0.0, tol = 0.0)
-Theta = get.interaction.matrix(graph = graph.maxnest, beta0.mu = 1, beta0.sd = 0., beta1.mu = 0., beta1.sd = 0., 
+gamma0.max = get.gamma0.max(graph = graph, beta0 = 1, beta1 = 0., delta = 0.0, tol = 0.0)
+Theta = get.interaction.matrix(graph = graph, beta0.mu = 1, beta0.sd = 0., beta1.mu = 0., beta1.sd = 0., 
                                gamma.mu = gamma0.max - 0.01, gamma.sd = 0., delta = 0.0)  # 0.0402
 SV = get.structural.vectors(C = Theta$C, M = Theta$M, numP = numP, numA = numA)  # Structural Vectors
 alpha = rowSums(Theta$C - Theta$M)
