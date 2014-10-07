@@ -6,19 +6,20 @@ extinct.threshold = extinct.threshold.default
 steady.threshold = 1e-8  # difference between species abundances of two successive steps is less than [steady.threshold]
 
 #' @title model of Discrete Lotka-Volterra Equations of Holling Type I
-model.dlv1 <- function(Nt, r, B) {
-  Ntplus1 = Nt * exp(r - B %*% Nt)
+model.dlv1 <- function(Nt, r, B, e) {
+  Ntplus1 = Nt * exp(r - B %*% Nt + e)
   Ntplus1[Ntplus1 < extinct.threshold] = 0
   Ntplus1
 }
 
 #' @title simulate DLV1 model for times
-sim.dlv1.times <- function(N0, r, B, times = 100) {
+sim.dlv1.times <- function(N0, r, B, C, times = 100) {
   s = dim(B)[1]
+  es = mvrnorm(times, mu = rep(0, s), Sigma = C)
   output = matrix(0, nrow = times + 1, ncol = s)
   output[1, ] = N0
   for(t in 1:times) {
-    output[t + 1, ] = model.dlv1(output[t, ], r, B)
+    output[t + 1, ] = model.dlv1(output[t, ], r, B, es[t, ])
     output
   }
   output

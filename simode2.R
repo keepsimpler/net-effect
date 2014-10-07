@@ -76,12 +76,6 @@ phi.lv1 <- function(r, C, N) {
   J
 }
 
-analysis.lv1 <- function(Theta, alpha) {
-  nstar = c(solve(Theta) %*% alpha)
-  extinct = sum(nstar <= 0)
-  survived = sum(nstar > 0)
-}
-
 
 
 #' @title press perturbation experiment: continually add members of species by rate of <p>

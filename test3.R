@@ -13,8 +13,8 @@ graphs.assort = llply(1:5, .parallel = TRUE, function(i) graphs.rewiring.swappin
 
 gamma0.max = get.gamma0.max(graph = graph.rand, beta0 = 1, beta1 = 0., delta = 0.5, tol = 0)
 #gamma0.max.bydelta = ldply(seq(0, 1., 0.1), function(i) get.gamma0.max(graph = graph, beta0 = 1, beta1 = 0., delta = i, tol = 0))
-parms = parms.lv2(graph = graph.rand, alpha.row.mu = 0.2, alpha.row.sd = 0.15, alpha.col.mu = 0.2, alpha.col.sd = 0.15, beta0.mu = 1, beta0.sd = 0,
-                  beta1.mu = 0., beta1.sd = 0, gamma.mu = gamma0.max - gamma0.max + 0.01, gamma.sd = 0, h.mu = 0.0, h.sd = 0, delta = 0.5)
+parms = parms.lv2(graph = graph.rand, alpha.row.mu = 1., alpha.row.sd = 0.2, alpha.col.mu = 1., alpha.col.sd = 0.2, beta0.mu = 1, beta0.sd = 0,
+                  beta1.mu = 0., beta1.sd = 0, gamma.mu = gamma0.max - gamma0.max + 0.01, gamma.sd = 0, h.mu = 0., h.sd = 0, delta = 0.)
 parms$r = rowSums(parms$C - parms$M)
 parms$r =  - svd(parms$C - parms$M)$u[, nrow(parms$C)]
 

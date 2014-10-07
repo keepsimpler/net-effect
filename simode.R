@@ -217,5 +217,17 @@ init.lv1 <- function(parms) {
   init  
 }
 
+analysis.lv1 <- function(r, B) {
+  nstar = c(solve(B) %*% r)
+  phi = - diag(nstar) %*% B
+  extinct = sum(nstar <= 0)
+  survived = sum(nstar > 0)
+  list(nstar = nstar, phi = phi, extinct = extinct, survived = survived)
+}
 
+mou.vars <- function(phi, C) {
+  s = dim(phi)[1]
+  I = diag(1, s)
+  - matrix(solve(kronecker(I, phi) + kronecker(phi, I)) %*% as.vector(C), nrow = s, ncol = s)
+}
 
