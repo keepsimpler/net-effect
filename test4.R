@@ -4,7 +4,7 @@ r = rep(1, s)
 C = diag(1, s)
 graph = graph.connected(s, k, gtype = 'er')
 graph = as.matrix(get.adjacency(graph))
-B = parms.dlv1.rand(graph, beta1.min = 0.2, beta1.max = 0.2)
+B = parms.dlv1.rand(graph, beta1.min = 0.1, beta1.max = 0.1)
 nstar = solve(B) %*% r
 phi = - diag(c(nstar)) %*% B
 Q = eigen(phi)$vectors
@@ -23,8 +23,17 @@ heterogeneity = ldply(graphs, function(graphs.1) {
   ldply(graphs.1, function(graph) {
     graph = graph$A
     get.degree.heterogeneity(graph)
+    get.degree.hetero(graph)
   })
 })
+
+a = ldply(1:100, function(i) {
+  graph = graph.connected(50, 2, gtype = 'regular', expower = 3.5)
+  get.degree.hetero(graph)
+})
+
+
+
 
 beta1s = seq(from = -0.2, to = 0.2, by = 0.02)
 res = llply(graphs, .parallel = TRUE, function(graphs.1) {
@@ -58,23 +67,32 @@ res = llply(graphs, .parallel = TRUE, function(graphs.1) {
   })
 })
 
-heterogeneity.and.vars = ldply(res, function(res.1) {
-  ldply(res.1, function(res.2) {
-    ldply(res.2, function(one) {
-      if (one$feasible && one$stable)
-        c(beta1 = one$beta1, vars.self = sum(diag(one$vars)), heterogeneity = one$heterogeneity, vars.sum = sum(one$vars), nstar.sum = sum(one$nstar) )
- #         vars.max = sum(sqrt(diag(one$vars)))^2, eigs = sum(one$nstar^2 / (2*(eigen(one$phi)$values))), 
-#          sigs = sum(one$nstar^2 / (2*(svd(one$phi)$d))), eigenvector = sum(eigen(one$phi)$vectors[,1]) )      
-    })
-  })
-})
+beta1 = 0.10
+res = get.results.by.graphs(graphs, beta1)
+
+hetero.beta1.vars = get.hetero.beta1.vars(res)
+hetero.beta1.vars = hetero.beta1.vars %.% filter(beta1 != -0.20 & beta1 != -0.18)
+qplot(data = hetero.beta1.vars, x = beta1, y = heterogeneity, color = vars.sum)
+
+nstars = get.nstars(res)
+selfvars = get.selfvars(res)
+nstars.long = melt(nstars, id.vars = c('beta1', 'hetero'), variable.name = 'nstars.name', value.name = 'nstars')
+selfvars.long = melt(selfvars, id.vars = c('beta1', 'hetero'), variable.name = 'selfvars.name', value.name = 'selfvars')
+nstars.long$selfvars = selfvars.long$selfvars
+nstars.long$selfvars.name = selfvars.long$selfvars.name
+qplot(data = nstars.long, x = nstars, y = selfvars, color = hetero) + theme_bw()
+qplot(data = nstars.long, x = nstars, y = selfvars, log = 'xy') + facet_wrap(~hetero, ncol = 5) + theme_bw()
 
 plot(heterogeneity.and.vars$heterogeneity, heterogeneity.and.vars$vars.self / heterogeneity.and.vars$vars.sum)
 pairs(heterogeneity.and.vars)
 
-nstars = get.nstars(res)
-selfvars = get.selfvars(res)
 plot(unlist(nstars), unlist(selfvars))
+
+a = ddply(nstars.long, .(hetero), function(one) {
+  summary(lm(log(one$nstars) ~ log(one$selfvars), data=faithful, ))$coefficients[, 'Estimate']      #r.squared
+})
+
+
 
 ntried = 500
 res.competition.sf = llply(1:ntried, .parallel = TRUE, function(i) {
