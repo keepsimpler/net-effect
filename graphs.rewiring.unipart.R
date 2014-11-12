@@ -8,6 +8,11 @@
 
 source('nestedness.r')
 
+library(doMC)  # 
+registerDoMC()  # register Multi Cores
+getDoParWorkers()  # get available Cores
+
+
 #' @param n, number of nodes
 #' @param k, average node degree
 graphs.rewiring.unipart <- function(n, k) {
@@ -111,25 +116,80 @@ rewirelinks.richer.onestep.unipart <- function(A, connected = TRUE, ntry = 100) 
   res
 }
 
-get.hetero.beta1.vars <- function(res) {
+get.feasible.stable <- function(res) {
+  notfeasible.notstable = 0
+  feasible.notstable = 0
+  notfeasible.stable = 0
+  feasible.stable = 0
+  for (i in 1:length(res)) {
+    one = res[[i]]
+    if (! one$feasible & ! one$stable) notfeasible.notstable = notfeasible.notstable + 1
+    else if (one$feasible & ! one$stable) feasible.notstable = feasible.notstable + 1
+    else if (! one$feasible & one$stable) notfeasible.stable = notfeasible.stable + 1
+    else feasible.stable = feasible.stable + 1
+  }
+  c(notfeasible.notstable = notfeasible.notstable, feasible.notstable = feasible.notstable,
+    notfeasible.stable = notfeasible.stable, feasible.stable = feasible.stable)
+}
+
+get.feasible.stable.by.variance <- function(res2) {
+    ldply(res2, function(res2.1) {
+      ldply(res2.1, function(res2.2) {
+        ldply(res2.2, function(res2.3) {
+          ldply(res2.3, function(res2.4) {
+            r.mean = res2.4$r.mean
+            r.sd = res2.4$r.sd
+            beta1.mean = res2.4$beta1.mean
+            beta1.sd = res2.4$beta1.sd
+            res = res2.4$res
+            feasible.stable = get.feasible.stable(res)
+            c(r.mean = r.mean, r.sd = r.sd, beta1.mean = beta1.mean, beta1.sd = beta1.sd, feasible.stable)
+          })
+        })
+      })
+    })  
+}
+
+get.nstars.vars.sum <- function(res) {
   ldply(res, function(one) {
     if (one$feasible && one$stable)
-      c(hetero = one$hetero, beta1 = one$beta1, vars.self = sum(diag(one$vars)), vars.sum = sum(one$vars), nstar.sum = sum(one$nstar),
-        eigs = sum(1 / (2*(eigen(one$phi)$values))))
+      c(hetero = one$hetero, vars.self = sum(diag(one$vars)), vars.sum = sum(one$vars), nstar.sum = sum(one$nstar),
+        eigs = sum(1 / (2*(eigen(one$phi)$values))), vars.max = sum(sqrt(diag(one$vars)))^2)
     #         vars.max = sum(sqrt(diag(one$vars)))^2, eigs = sum(one$nstar^2 / (2*(eigen(one$phi)$values))), 
     #          sigs = sum(one$nstar^2 / (2*(svd(one$phi)$d))), eigenvector = sum(eigen(one$phi)$vectors[,1]) )      
   })
 }
 
+get.nstars.vars.sum.by.variance <- function(res2) {
+  ldply(res2, function(res2.1) {
+    ldply(res2.1, function(res2.2) {
+      ldply(res2.2, function(res2.3) {
+        ldply(res2.3, function(res2.4) {
+          r.mean = res2.4$r.mean
+          r.sd = res2.4$r.sd
+          beta1.mean = res2.4$beta1.mean
+          beta1.sd = res2.4$beta1.sd
+          res = res2.4$res
+          ldply(res, function(one) {
+            if (one$feasible && one$stable)
+              c(r.mean = r.mean, r.sd = r.sd, beta1.mean = beta1.mean, beta1.sd = beta1.sd, hetero = one$hetero, beta1 = one$beta1, vars.self = sum(diag(one$vars)), vars.sum = sum(one$vars), nstar.sum = sum(one$nstar),
+                eigs = sum(1 / (2*(eigen(one$phi)$values))), vars.max = sum(sqrt(diag(one$vars)))^2)
+          })
+        })
+      })
+    })
+  })  
+}
+
 get.nstars <- function(res) {
   ldply(res, function(one) {
-    if (one$feasible && one$stable) c(beta1 = one$beta1, hetero = one$hetero, nstar = one$nstar)    
+    if (one$feasible && one$stable) c(hetero = one$hetero, nstar = one$nstar)    
   })
 }
 
 get.selfvars <- function(res) {
   ldply(res, function(one) {
-    if (one$feasible && one$stable) c(beta1 = one$beta1, hetero = one$hetero, selfvars = diag(one$vars))    
+    if (one$feasible && one$stable) c(hetero = one$hetero, selfvars = diag(one$vars))    
   })
 }
 
@@ -215,12 +275,15 @@ get.graphs.hetero <- function(n, k, ntried = 1000, rep1 = 10, rep2 = 10) {
 #' @param graph, the adjacency matrix of a graph
 #' @param beta0, the diagonal elements of interaction matrix
 #' @param beta1.min, beta1.max, the minimum and maximum values of off-diagonal elements of interaction matrix
-get.interaction.matrix <- function(graph, beta0 = 1, beta1.min = 0., beta1.max = 0.) {
+get.interaction.matrix <- function(graph, beta0 = 1, beta1.mean = 0., beta1.sd = 0., beta1.random.type = 'norm') {
   s = dim(graph)[1]  # number of nodes
   edges = sum(graph > 0)  # number of edges
   B = graph
   # generate off-diagonal elements randomly distributed between minimum and maximum values
-  B[B > 0] = runif(edges, min = beta1.min, max = beta1.max) 
+  if (beta1.random.type == 'norm')
+    B[B > 0] = rnorm(edges, mean = beta1.mean, sd = beta1.sd)
+  else if (beta1.random.type == 'unif')
+    B[B > 0] = runif(edges, min = beta1.mean - beta1.sd, max = beta1.mean + beta1.sd) 
   diag(B) = rep(beta0, s)  # assign the diagonal elements
   B
 }
@@ -250,34 +313,77 @@ mou.vars <- function(phi, C) {
   - matrix(solve(kronecker(I, phi) + kronecker(phi, I)) %*% as.vector(C), nrow = s, ncol = s)
 }
 
+get.results.by.variance <- function(graphs, beta1.random.type = 'norm', r.random.type = 'norm', flag = TRUE) {
+  r.mean.min = 1
+  r.mean.max = 4
+  r.mean.step = 1
+  r.means = seq(from = r.mean.min, to = r.mean.max, by = r.mean.step)
+  beta1.mean.min = -0.1
+  beta1.mean.max = 0.2
+  beta1.mean.step = 0.1
+  beta1.means = seq(from = beta1.mean.min, to = beta1.mean.max, by = beta1.mean.step)
+  llply(r.means, function(r.mean) {
+    r.sd.min = 0
+    r.sd.max = r.mean
+    r.sds = seq(from = r.sd.min, to = r.sd.max, length.out = 4)
+    llply(r.sds, function(r.sd) {
+      llply(beta1.means, function(beta1.mean) {
+        beta1.sd.min = 0
+        beta1.sd.max = abs(beta1.mean)
+        beta1.sds = seq(from = beta1.sd.min, to = beta1.sd.max, length.out = 4)
+        llply(beta1.sds, function(beta1.sd) {
+          res = get.results.by.graphs(graphs,beta1.mean = 0.1, beta1.sd = 0., beta1.random.type = beta1.random.type, 
+                                      r.mean = r.mean, r.sd = r.sd, r.random.type = r.random.type, flag = flag)
+          c(r.mean = r.mean, r.sd = r.sd, beta1.mean = beta1.mean, beta1.sd = beta1.sd, res = list(res))          
+        })
+      })
+    })
+  })
+}
 
-get.results.by.graphs <- function(graphs, beta1, flag = TRUE) {
-  llply(graphs, function(graph) {
+#' @title get simulation results
+#' @param graphs, structure of ecological networks with different heteros
+#' @param beta1, interaction strength
+#' @param flag, does include x^* in the variance-covariance matrix of environmental fluctuations
+get.results.by.graphs <- function(graphs, beta1.mean, beta1.sd, beta1.random.type = 'norm', 
+                                  r.mean, r.sd, r.random.type = 'norm', flag = TRUE) {
+  llply(graphs, .parallel = TRUE, function(graph) {
     A = as.matrix(get.adjacency(graph))  # get the adjacency matrix of graph
-    B = get.interaction.matrix(A, beta1.min = beta1, beta1.max = beta1)  # get the interaction matrix from graph and beta1
+    B = get.interaction.matrix(A, beta1.mean = beta1.mean, beta1.sd = beta1.sd, beta1.random.type = 'norm')  # get the interaction matrix from graph and beta1
     s = dim(B)[1]  # number of nodes
-    r = rep(1, s)  # intrinsic growth rates of species
+    if (r.random.type == 'norm')
+      r = rnorm(s, mean = r.mean, sd = r.sd)
+    else if (r.random.type == 'unif')
+      r = runif(s, min = r.mean - r.sd, max = r.mean + r.sd)  # intrinsic growth rates of species rep(1, s)
     out.lv1 = analysis.lv1(r, B)  # get the output of LV1 model
     ret = list()
     # if the maximum real part of eigenvalues of the community matrix is not negative, then the equilibrium is not local stable
     if (max(Re(eigen(out.lv1$phi, only.values = TRUE)$values)) >= 0) stable = FALSE else stable = TRUE
+    hetero = get.degree.hetero(graph)  # 
     if (out.lv1$extinct == 0 && stable) {  # if the equilibrium is feasible (i.e., all species survived) and stable
-      hetero = get.degree.hetero(graph)  # 
       nstar = out.lv1$nstar
       phi = out.lv1$phi
       # if consider species abundances in error covariance matrix [C]
       C = diag(1, s)
       if (flag) C = diag(nstar^2) %*% C 
       vars = mou.vars(phi, C)
-      ret = list(hetero = hetero, beta1 = beta1, feasible = TRUE, stable = TRUE, nstar = nstar, phi = phi, vars = vars, B = B)
+      ret = list(hetero = hetero, feasible = TRUE, stable = TRUE, nstar = nstar, phi = phi, vars = vars, B = B)
     }
     else if (out.lv1$extinct == 0 && !stable) {  # if the equilibrium is feasible but not stable
-      ret = list(hetero = hetero, beta1 = beta1, feasible = TRUE, stable = FALSE)
+      ret = list(hetero = hetero, feasible = TRUE, stable = FALSE)
     }
     else {  # if the equilibrium is neither feasible nor stable
-      ret = list(hetero = hetero, beta1 = beta1, feasible = FALSE, stable = FALSE)
+      ret = list(hetero = hetero, feasible = FALSE, stable = FALSE)
     }
     ret         
   })
 }
 #save(graphs.rewiring, file = paste('graphs.rewiring', s1, s2, k, sep = '-'))
+
+#' @title get [rep] full graphs with [n] nodes
+get.graphs.full <- function(n, rep) {
+  graph = graph.full(n)
+  llply(1:rep, function(i) {
+    graph
+  })  
+}
